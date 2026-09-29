@@ -1,0 +1,1565 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>成本看板 - 按日分摊测算工作台</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Microsoft YaHei","Segoe UI",sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+/* Layout */
+.app{display:flex;min-height:100vh}
+/* Sidebar */
+.sidebar{width:220px;background:#001529;color:#fff;flex-shrink:0;display:flex;flex-direction:column}
+.sidebar-header{padding:20px 16px;border-bottom:1px solid #003a5c;text-align:center}
+.sidebar-header h1{font-size:16px;font-weight:600;color:#fff}
+.sidebar-header p{font-size:11px;color:#8c8c8c;margin-top:4px}
+.sidebar-nav{flex:1;padding:12px 0}
+.nav-section{margin-bottom:8px}
+.nav-section-title{padding:8px 16px;font-size:11px;color:#595959;text-transform:uppercase;letter-spacing:1px}
+.nav-item{padding:10px 16px 10px 24px;cursor:pointer;display:flex;align-items:center;gap:8px;color:#a6a6a6;transition:all .2s;border-left:3px solid transparent}
+.nav-item:hover{background:#003a5c;color:#fff}
+.nav-item.active{background:#1890ff;color:#fff;border-left-color:#fff}
+.nav-item .icon{font-size:16px;width:20px;text-align:center}
+.nav-item.disabled{opacity:.4;cursor:not-allowed}
+.nav-item.disabled:hover{background:none}
+/* Main */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.main-header{background:#fff;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e8e8e8;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.main-header h2{font-size:18px;font-weight:600}
+.main-header .breadcrumb{font-size:12px;color:#8c8c8c}
+.main-body{flex:1;padding:20px 24px;overflow:auto}
+/* Tabs */
+.tabs{display:flex;gap:0;border-bottom:2px solid #e8e8e8;margin-bottom:16px}
+.tab{padding:10px 24px;cursor:pointer;font-size:14px;color:#595959;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
+.tab:hover{color:#1890ff}
+.tab.active{color:#1890ff;border-bottom-color:#1890ff;font-weight:600}
+/* Toolbar */
+.toolbar{display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+.toolbar .spacer{flex:1}
+/* Filter bar */
+.filter-bar{display:flex;gap:12px;margin-bottom:16px;align-items:flex-start;flex-wrap:wrap;background:#fff;padding:12px 16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);position:relative;z-index:10}
+.ms-dropdown{position:relative}
+.ms-trigger{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border:1px solid #d9d9d9;border-radius:4px;font-size:13px;cursor:pointer;background:#fff;min-width:110px;user-select:none;white-space:nowrap;transition:border-color .2s}
+.ms-trigger:hover{border-color:#1890ff}
+.ms-count{background:#1890ff;color:#fff;font-size:11px;padding:0 6px;border-radius:10px;line-height:16px;min-width:16px;text-align:center}
+.ms-caret{font-size:10px;color:#999;margin-left:auto}
+.ms-menu{position:absolute;top:100%;left:0;margin-top:4px;background:#fff;border:1px solid #e8e8e8;border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,.12);max-height:240px;overflow-y:auto;min-width:160px;z-index:100;display:none;padding:4px 0}
+.ms-menu.open{display:block}
+.ms-option{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:13px;cursor:pointer;white-space:nowrap;color:#333}
+.ms-option:hover{background:#f5f5f5}
+.ms-option input{margin:0;cursor:pointer}
+.ms-select-all{padding:6px 12px;font-size:12px;color:#1890ff;cursor:pointer;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center}
+.ms-select-all:hover{text-decoration:underline}
+.ms-clear{color:#ff4d4f;font-size:12px;cursor:pointer}
+.ms-clear:hover{text-decoration:underline}
+/* Selection bar */
+.selection-bar{display:flex;gap:8px;align-items:center;margin-bottom:12px;padding:8px 16px;background:#e6f7ff;border:1px solid #91d5ff;border-radius:4px}
+.selection-count{font-size:13px;color:#1890ff;font-weight:600;margin-right:auto}
+/* Buttons */
+.btn{padding:6px 16px;border:1px solid #d9d9d9;background:#fff;color:#333;border-radius:4px;cursor:pointer;font-size:13px;display:inline-flex;align-items:center;gap:6px;transition:all .2s}
+.btn:hover{border-color:#1890ff;color:#1890ff}
+.btn-primary{background:#1890ff;border-color:#1890ff;color:#fff}
+.btn-primary:hover{background:#40a9ff;border-color:#40a9ff;color:#fff}
+.btn-danger{color:#ff4d4f;border-color:#ff4d4f}
+.btn-danger:hover{background:#fff1f0}
+.btn-sm{padding:3px 10px;font-size:12px}
+.btn-link{border:none;background:none;color:#1890ff;padding:2px 6px}
+.btn-link:hover{color:#40a9ff;text-decoration:underline}
+/* Summary cards */
+.summary-cards{display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+.summary-card{background:#fff;border-radius:8px;padding:16px 20px;min-width:180px;box-shadow:0 1px 3px rgba(0,0,0,.08);flex:1}
+.summary-card .label{font-size:12px;color:#8c8c8c;margin-bottom:6px}
+.summary-card .value{font-size:22px;font-weight:600;color:#1890ff}
+.summary-card .unit{font-size:13px;color:#8c8c8c;margin-left:4px;font-weight:normal}
+/* Table */
+.table-wrapper{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{background:#fafafa;font-weight:600;color:#262626;padding:10px 12px;border-bottom:2px solid #e8e8e8;white-space:nowrap;position:sticky;top:0;z-index:10}
+tbody td{padding:8px 12px;border-bottom:1px solid #f0f0f0;white-space:nowrap}
+tbody tr:hover{background:#e6f7ff}
+tbody tr.summary-row{background:#fafafa;font-weight:600}
+tbody tr.summary-row td{border-top:2px solid #1890ff;border-bottom:none}
+.text-right{text-align:right}
+.text-center{text-align:center}
+.col-sticky{position:sticky;left:0;background:#fff;z-index:5;border-right:1px solid #e8e8e8}
+tr:hover .col-sticky{background:#e6f7ff}
+tr.summary-row .col-sticky{background:#fafafa}
+/* Empty state */
+.empty-state{text-align:center;padding:60px 20px;color:#8c8c8c}
+.empty-state .icon{font-size:48px;margin-bottom:12px}
+.empty-state p{font-size:14px;margin-bottom:16px}
+/* Modal */
+.modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:1000;display:none;justify-content:center;align-items:center}
+.modal-overlay.show{display:flex}
+.modal{background:#fff;border-radius:8px;max-height:90vh;overflow:auto;display:flex;flex-direction:column}
+.modal-header{padding:16px 24px;border-bottom:1px solid #e8e8e8;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:#fff;z-index:10}
+.modal-header h3{font-size:16px;font-weight:600}
+.modal-close{font-size:20px;cursor:pointer;color:#8c8c8c;border:none;background:none}
+.modal-close:hover{color:#333}
+.modal-body{padding:24px;overflow:auto}
+.modal-footer{padding:12px 24px;border-top:1px solid #e8e8e8;display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:0;background:#fff}
+/* Form */
+.form-section{margin-bottom:20px}
+.form-section-title{font-size:13px;font-weight:600;color:#1890ff;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #e8e8e8}
+.form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.form-item{display:flex;flex-direction:column}
+.form-item label{font-size:12px;color:#595959;margin-bottom:4px}
+.form-item label .req{color:#ff4d4f}
+.form-item input,.form-item select{padding:6px 8px;border:1px solid #d9d9d9;border-radius:4px;font-size:13px}
+.form-item input:focus{border-color:#1890ff;outline:none;box-shadow:0 0 0 2px rgba(24,144,255,.2)}
+.form-item .input-group{display:flex;align-items:center}
+.form-item .input-group input{flex:1}
+.form-item .input-group .suffix{padding:0 8px;font-size:12px;color:#8c8c8c;border:1px solid #d9d9d9;border-left:none;border-radius:0 4px 4px 0;background:#fafafa}
+/* Modal sizes */
+.modal-lg{width:900px}
+.modal-md{width:600px}
+/* Version list */
+.version-list{list-style:none}
+.version-item{padding:12px 16px;border:1px solid #e8e8e8;border-radius:6px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.version-item:hover{border-color:#1890ff}
+.version-info .version-name{font-weight:600;font-size:14px}
+.version-info .version-meta{font-size:12px;color:#8c8c8c;margin-top:2px}
+.version-info .version-desc{font-size:12px;color:#595959;margin-top:4px}
+/* Toast */
+.toast-container{position:fixed;top:20px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:8px}
+.toast{padding:10px 16px;border-radius:4px;color:#fff;font-size:13px;animation:slideIn .3s ease;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.toast.success{background:#52c41a}
+.toast.error{background:#ff4d4f}
+.toast.info{background:#1890ff}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+/* Coming soon */
+.coming-soon{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#8c8c8c}
+.coming-soon .icon{font-size:64px;margin-bottom:16px}
+.coming-soon h3{font-size:20px;margin-bottom:8px;color:#595955}
+.coming-soon p{font-size:14px}
+/* Expandable row */
+.expand-btn{cursor:pointer;color:#1890ff;user-select:none}
+.expand-detail{background:#fafafa}
+.expand-detail td{padding:0}
+.detail-content{padding:12px}
+.detail-content table{font-size:12px}
+.detail-content th{background:#f0f0f0!important}
+/* File input */
+.file-drop{border:2px dashed #d9d9d9;border-radius:8px;padding:40px;text-align:center;cursor:pointer;transition:all .2s}
+.file-drop:hover{border-color:#1890ff;background:#e6f7ff}
+.file-drop.dragover{border-color:#1890ff;background:#e6f7ff}
+.file-drop .icon{font-size:40px;color:#8c8c8c;margin-bottom:12px}
+.file-drop p{color:#8c8c8c;font-size:13px}
+.file-drop .formats{font-size:11px;color:#bfbfbf;margin-top:8px}
+/* badge */
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;background:#e6f7ff;color:#1890ff}
+.badge-warning{background:#fff7e6;color:#fa8c16}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h1>成本分摊测算</h1>
+      <p>按日分摊 · 按月聚合</p>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-section-title">项目分类</div>
+        <div class="nav-item active" data-nav="tos" onclick="switchNav('tos')">
+          <span class="icon">📊</span> tOS项目
+        </div>
+        <div class="nav-item disabled" data-nav="tech" onclick="switchNav('tech')">
+          <span class="icon">🛠</span> 技术项目
+        </div>
+        <div class="nav-item disabled" data-nav="capability" onclick="switchNav('capability')">
+          <span class="icon">🎯</span> 能力建设项目
+        </div>
+      </div>
+    </nav>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="main-header">
+      <div>
+        <span class="breadcrumb">成本看板 / </span>
+        <h2 id="pageTitle" style="display:inline">tOS项目 - 按日分摊测算</h2>
+      </div>
+    </div>
+    <div class="main-body" id="mainBody"></div>
+  </div>
+</div>
+
+<!-- Modal: Entry -->
+<div class="modal-overlay" id="entryModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3 id="entryModalTitle">录入项目预估数据</h3>
+      <button class="modal-close" onclick="closeEntryModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <form id="entryForm" onsubmit="return false">
+        <div class="form-section">
+          <div class="form-section-title">基本信息</div>
+          <div class="form-grid">
+            <div class="form-item">
+              <label>项目名称 <span class="req">*</span></label>
+              <input type="text" id="f_projectName" required="">
+            </div>
+            <div class="form-item">
+              <label>一级部门 <span class="req">*</span></label>
+              <input type="text" id="f_primaryDept" required="">
+            </div>
+            <div class="form-item">
+              <label>二级部门</label>
+              <input type="text" id="f_secondaryDept">
+            </div>
+          </div>
+        </div>
+        <div class="form-section">
+          <div class="form-section-title">各阶段预估投入（人月）</div>
+          <div class="form-grid" id="estimateFields"></div>
+        </div>
+        <div class="form-section">
+          <div class="form-section-title">关键里程碑日期</div>
+          <div class="form-grid" id="dateFields"></div>
+        </div>
+        <div class="form-section">
+          <div class="form-section-title">各阶段工期（天，仅供参考，实际按日期范围计算）</div>
+          <div class="form-grid" id="durationFields"></div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeEntryModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveProjectFromForm()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Import -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal modal-md">
+    <div class="modal-header">
+      <h3>导入项目预估数据</h3>
+      <button class="modal-close" onclick="closeImportModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="file-drop" id="fileDrop" onclick="document.getElementById('fileInput').click()">
+        <div class="icon">📁</div>
+        <p>点击选择文件或拖拽文件到此处</p>
+        <p class="formats">支持 .xlsx / .xls / .csv 格式</p>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFileImport(this.files[0])">
+      </div>
+      <div style="margin-top:16px;text-align:center">
+        <button class="btn btn-sm" onclick="downloadTemplate()">⬇ 下载导入模板</button>
+      </div>
+      <div style="margin-top:16px;padding:12px;background:#e6f7ff;border-radius:6px;font-size:12px;color:#595959">
+        <strong>导入说明：</strong><br>
+        1. 请按模板格式填写数据，表头名称不可修改<br>
+        2. 日期格式：YYYY-MM-DD（如 2025-01-15）<br>
+        3. 投入(人月)和工期请填写数字<br>
+        4. 导入时将自动保存当前数据为历史版本
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeImportModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Version History -->
+<div class="modal-overlay" id="versionModal">
+  <div class="modal modal-md">
+    <div class="modal-header">
+      <h3>历史版本管理</h3>
+      <button class="modal-close" onclick="closeVersionModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+        <input type="text" id="versionDesc" placeholder="版本描述（如：2025年Q1预估数据）" style="flex:1;padding:6px 8px;border:1px solid #d9d9d9;border-radius:4px;font-size:13px">
+        <button class="btn btn-primary btn-sm" onclick="saveCurrentVersion()">保存当前版本</button>
+      </div>
+      <div id="versionList"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeVersionModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Detail -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3>月度预估详情</h3>
+      <button class="modal-close" onclick="closeDetailModal()">×</button>
+    </div>
+    <div class="modal-body" id="detailModalBody"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeDetailModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ===== Configuration =====
+const STAGES = [
+  {key:'planning',name:'规划阶段',estimateField:'planningEstimate',durationField:'planningDuration',startField:'planningKODate',endField:'charterStartDate'},
+  {key:'concept',name:'概念阶段',estimateField:'conceptEstimate',durationField:'conceptDuration',startField:'charterStartDate',endField:'str1Date'},
+  {key:'plan',name:'计划阶段',estimateField:'planEstimate',durationField:'planDuration',startField:'str1Date',endField:'str3Date'},
+  {key:'devVerify',name:'开发验证阶段',estimateField:'devVerifyEstimate',durationField:'devVerifyDuration',startField:'str3Date',endField:'str5Date'},
+  {key:'launch',name:'上市保障',estimateField:'launchEstimate',durationField:'launchDuration',startField:'str5Date',endField:'mrDate'},
+  {key:'maintenance',name:'维护',estimateField:'maintenanceEstimate',durationField:'maintenanceDuration',startField:'mrDate',endField:'maintenanceEndDate'},
+];
+
+const FIELDS = [
+  {key:'projectName',label:'项目名称',type:'text',group:'basic'},
+  {key:'primaryDept',label:'一级部门',type:'text',group:'basic'},
+  {key:'secondaryDept',label:'二级部门',type:'text',group:'basic'},
+  {key:'planningEstimate',label:'规划阶段预估投入',type:'number',group:'estimate'},
+  {key:'conceptEstimate',label:'概念阶段预估投入',type:'number',group:'estimate'},
+  {key:'planEstimate',label:'计划阶段预估投入',type:'number',group:'estimate'},
+  {key:'devVerifyEstimate',label:'开发验证阶段预估投入',type:'number',group:'estimate'},
+  {key:'launchEstimate',label:'上市保障预估投入',type:'number',group:'estimate'},
+  {key:'maintenanceEstimate',label:'维护预估投入',type:'number',group:'estimate'},
+  {key:'planningKODate',label:'规划KO日期',type:'date',group:'date'},
+  {key:'charterStartDate',label:'Charter启动日期',type:'date',group:'date'},
+  {key:'str1Date',label:'STR1日期',type:'date',group:'date'},
+  {key:'str3Date',label:'STR3日期',type:'date',group:'date'},
+  {key:'str5Date',label:'STR5日期',type:'date',group:'date'},
+  {key:'mrDate',label:'MR日期',type:'date',group:'date'},
+  {key:'maintenanceEndDate',label:'维护期结束日期',type:'date',group:'date'},
+  {key:'planningDuration',label:'规划阶段工期',type:'number',group:'duration'},
+  {key:'conceptDuration',label:'概念阶段工期',type:'number',group:'duration'},
+  {key:'planDuration',label:'计划阶段工期',type:'number',group:'duration'},
+  {key:'devVerifyDuration',label:'开发验证阶段工期',type:'number',group:'duration'},
+  {key:'launchDuration',label:'上市保障工期',type:'number',group:'duration'},
+  {key:'maintenanceDuration',label:'维护工期',type:'number',group:'duration'},
+];
+
+const HEADER_MAP = {};
+FIELDS.forEach(f => HEADER_MAP[f.label] = f.key);
+HEADER_MAP['规划KO日期'] = 'planningKODate';
+
+const NAV_TITLES = {
+  tos: 'tOS项目 - 按日分摊测算',
+  tech: '技术项目 - 按日分摊测算',
+  capability: '能力建设项目 - 按日分摊测算',
+};
+
+// ===== State =====
+let state = {
+  currentNav: 'tos',
+  currentTab: 'overview',
+  projects: [],
+  versions: [],
+  editingProjectId: null,
+  filters: { dept: [], version: [], month: [] },
+  selectedIds: [],
+};
+
+// ===== Storage =====
+function getStorageKey(suffix) {
+  return 'costAlloc_' + state.currentNav + '_' + suffix;
+}
+
+function loadData() {
+  const raw = localStorage.getItem(getStorageKey('projects'));
+  state.projects = raw ? JSON.parse(raw) : [];
+  const vRaw = localStorage.getItem(getStorageKey('versions'));
+  state.versions = vRaw ? JSON.parse(vRaw) : [];
+  // Load sample data if empty for first time
+  if (state.projects.length === 0 && state.currentNav === 'tos' && !localStorage.getItem('costAlloc_initialized')) {
+    state.projects = getSampleData();
+    localStorage.setItem('costAlloc_initialized', 'true');
+    saveData();
+  }
+}
+
+function saveData() {
+  localStorage.setItem(getStorageKey('projects'), JSON.stringify(state.projects));
+}
+
+function saveVersions() {
+  localStorage.setItem(getStorageKey('versions'), JSON.stringify(state.versions));
+}
+
+// ===== Utilities =====
+function formatMoney(num) {
+  if (!num || isNaN(num)) return '-';
+  return Number(num).toLocaleString('zh-CN', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '-';
+  return dateStr;
+}
+
+function parseDate(dateStr) {
+  if (!dateStr) return null;
+  if (dateStr instanceof Date) return dateStr;
+  const s = String(dateStr).trim();
+  // Handle YYYY-MM-DD or YYYY/MM/DD
+  const parts = s.split(/[-\/]/);
+  if (parts.length === 3) {
+    const y = parseInt(parts[0]);
+    const m = parseInt(parts[1]) - 1;
+    const d = parseInt(parts[2]);
+    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+      return new Date(y, m, d);
+    }
+  }
+  // Handle Excel date serial number
+  if (!isNaN(s)) {
+    const num = parseFloat(s);
+    if (num > 30000 && num < 60000) {
+      return new Date((num - 25569) * 86400 * 1000);
+    }
+  }
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function formatDateStr(date) {
+  if (!date) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + d;
+}
+
+function generateId() {
+  return 'p_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+}
+
+function showToast(message, type) {
+  type = type || 'info';
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = 'toast ' + type;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(function() {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(100%)';
+    toast.style.transition = 'all .3s';
+    setTimeout(function() { toast.remove(); }, 300);
+  }, 3000);
+}
+
+// ===== Calculations =====
+function calculateMonthlyData(project) {
+  const result = {};
+
+  STAGES.forEach(function(stage) {
+    const estimate = parseFloat(project[stage.estimateField]) || 0;
+    const startDateStr = project[stage.startField];
+    const endDateStr = project[stage.endField];
+
+    if (!estimate || !startDateStr || !endDateStr) return;
+
+    const start = parseDate(startDateStr);
+    const end = parseDate(endDateStr);
+    if (!start || !end || start > end) return;
+
+    // Use actual calendar days from date range, not user-entered duration,
+    // so that monthly allocations sum exactly to the stage estimate
+    const totalStageDays = Math.floor((end - start) / 86400000) + 1;
+    if (totalStageDays <= 0) return;
+    const dailyRate = estimate / totalStageDays;
+
+    // Iterate month by month
+    let cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    while (cursor <= end) {
+      const y = cursor.getFullYear();
+      const m = cursor.getMonth();
+      const monthKey = y + '-' + String(m + 1).padStart(2, '0');
+
+      const monthStart = new Date(y, m, 1);
+      const monthEnd = new Date(y, m + 1, 0);
+      const effStart = start > monthStart ? start : monthStart;
+      const effEnd = end < monthEnd ? end : monthEnd;
+      const days = Math.floor((effEnd - effStart) / 86400000) + 1;
+
+      if (days > 0) {
+        if (!result[monthKey]) {
+          result[monthKey] = {total: 0, stages: {}};
+        }
+        const amount = dailyRate * days;
+        result[monthKey].total += amount;
+        result[monthKey].stages[stage.key] = (result[monthKey].stages[stage.key] || 0) + amount;
+      }
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+  });
+
+  return result;
+}
+
+function getAllMonths(projects) {
+  const months = new Set();
+  projects.forEach(function(p) {
+    const data = calculateMonthlyData(p);
+    Object.keys(data).forEach(function(k) { months.add(k); });
+  });
+  return Array.from(months).sort();
+}
+
+function getTotalEstimate(project) {
+  return STAGES.reduce(function(sum, s) {
+    return sum + (parseFloat(project[s.estimateField]) || 0);
+  }, 0);
+}
+
+// ===== Filters (multi-select) =====
+function getFilteredProjects() {
+  let projects = state.projects;
+  if (state.filters.version && state.filters.version.length > 0) {
+    let merged = [];
+    state.filters.version.forEach(function(vid) {
+      const v = state.versions.find(function(x) { return x.id === vid; });
+      if (v && v.data) merged = merged.concat(v.data);
+    });
+    if (merged.length > 0) projects = merged;
+  }
+  if (state.filters.dept && state.filters.dept.length > 0) {
+    projects = projects.filter(function(p) { return state.filters.dept.indexOf(p.primaryDept) !== -1; });
+  }
+  if (state.filters.month && state.filters.month.length > 0) {
+    projects = projects.filter(function(p) {
+      const mData = calculateMonthlyData(p);
+      return state.filters.month.some(function(m) { return mData[m] && mData[m].total > 0; });
+    });
+  }
+  return projects;
+}
+
+function getUniqueDepts() {
+  const depts = new Set();
+  state.projects.forEach(function(p) { if (p.primaryDept) depts.add(p.primaryDept); });
+  state.versions.forEach(function(v) {
+    if (v.data) v.data.forEach(function(p) { if (p.primaryDept) depts.add(p.primaryDept); });
+  });
+  return Array.from(depts).sort();
+}
+
+function toggleFilter(key, value) {
+  const arr = state.filters[key];
+  const idx = arr.indexOf(value);
+  if (idx === -1) arr.push(value);
+  else arr.splice(idx, 1);
+  renderDataArea();
+}
+
+function selectAllFilter(key) {
+  if (key === 'dept') state.filters[key] = getUniqueDepts();
+  else if (key === 'version') state.filters[key] = state.versions.map(function(v) { return v.id; });
+  else if (key === 'month') state.filters[key] = getAllMonths(state.projects);
+  renderDataArea();
+}
+
+function clearFilter(key) {
+  state.filters[key] = [];
+  renderDataArea();
+}
+
+// ===== Batch Selection =====
+function toggleSelect(id) {
+  var idx = state.selectedIds.indexOf(id);
+  if (idx === -1) state.selectedIds.push(id);
+  else state.selectedIds.splice(idx, 1);
+  renderDataArea();
+}
+
+function toggleSelectAll() {
+  var filtered = getFilteredProjects();
+  if (filtered.length === 0) return;
+  var allSelected = filtered.every(function(p) { return state.selectedIds.indexOf(p.id) !== -1; });
+  if (allSelected) {
+    var filteredIds = filtered.map(function(p) { return p.id; });
+    state.selectedIds = state.selectedIds.filter(function(id) { return filteredIds.indexOf(id) === -1; });
+  } else {
+    filtered.forEach(function(p) {
+      if (state.selectedIds.indexOf(p.id) === -1) state.selectedIds.push(p.id);
+    });
+  }
+  renderDataArea();
+}
+
+function batchDelete() {
+  if (state.selectedIds.length === 0) return;
+  if (!confirm('确定要删除选中的 ' + state.selectedIds.length + ' 个项目吗？此操作不可撤销。')) return;
+  state.projects = state.projects.filter(function(x) { return state.selectedIds.indexOf(x.id) === -1; });
+  state.selectedIds = [];
+  saveData();
+  showToast('已删除选中项目', 'success');
+  renderMain();
+}
+
+function clearSelection() {
+  state.selectedIds = [];
+  renderDataArea();
+}
+
+function toggleDropdown(key) {
+  ['dept','version','month'].forEach(function(k) {
+    if (k !== key) {
+      const m = document.getElementById('ms-menu-' + k);
+      if (m) m.classList.remove('open');
+    }
+  });
+  const menu = document.getElementById('ms-menu-' + key);
+  if (menu) menu.classList.toggle('open');
+}
+
+function resetFilters() {
+  state.filters = { dept: [], version: [], month: [] };
+  renderMain();
+}
+
+function renderFilterBar() {
+  var depts = getUniqueDepts();
+  var months = getAllMonths(state.projects);
+  var html = '<div class="filter-bar">';
+  // Dept dropdown
+  html += '<div class="ms-dropdown">';
+  html += '<div class="ms-trigger" onclick="event.stopPropagation();toggleDropdown(\'dept\')">';
+  html += '<span>&#127970; 部门</span>';
+  html += '<span class="ms-count" id="ms-count-dept"' + (state.filters.dept.length ? '' : ' style="display:none"') + '>' + state.filters.dept.length + '</span>';
+  html += '<span class="ms-caret">&#9662;</span></div>';
+  html += '<div class="ms-menu" id="ms-menu-dept">';
+  if (depts.length > 0) {
+    html += '<div class="ms-select-all"><span onclick="selectAllFilter(\'dept\')">全选</span><span class="ms-clear" onclick="clearFilter(\'dept\')">清空</span></div>';
+    depts.forEach(function(d) {
+      var ck = state.filters.dept.indexOf(d) !== -1 ? ' checked' : '';
+      html += '<label class="ms-option" onclick="event.stopPropagation()"><input type="checkbox" value="' + d + '"' + ck + ' onchange="toggleFilter(\'dept\',this.value)">' + d + '</label>';
+    });
+  } else {
+    html += '<div style="padding:8px 12px;color:#999;font-size:12px">暂无部门数据</div>';
+  }
+  html += '</div></div>';
+  // Version dropdown
+  html += '<div class="ms-dropdown">';
+  html += '<div class="ms-trigger" onclick="event.stopPropagation();toggleDropdown(\'version\')">';
+  html += '<span>&#128336; 版本</span>';
+  html += '<span class="ms-count" id="ms-count-version"' + (state.filters.version.length ? '' : ' style="display:none"') + '>' + state.filters.version.length + '</span>';
+  html += '<span class="ms-caret">&#9662;</span></div>';
+  html += '<div class="ms-menu" id="ms-menu-version">';
+  if (state.versions.length === 0) {
+    html += '<div style="padding:8px 12px;color:#999;font-size:12px">暂无历史版本</div>';
+  } else {
+    html += '<div class="ms-select-all"><span onclick="selectAllFilter(\'version\')">全选</span><span class="ms-clear" onclick="clearFilter(\'version\')">清空</span></div>';
+    state.versions.forEach(function(v) {
+      var ck = state.filters.version.indexOf(v.id) !== -1 ? ' checked' : '';
+      html += '<label class="ms-option" onclick="event.stopPropagation()"><input type="checkbox" value="' + v.id + '"' + ck + ' onchange="toggleFilter(\'version\',this.value)">v' + v.version + ' ' + (v.description || '') + '</label>';
+    });
+  }
+  html += '</div></div>';
+  // Month dropdown
+  html += '<div class="ms-dropdown">';
+  html += '<div class="ms-trigger" onclick="event.stopPropagation();toggleDropdown(\'month\')">';
+  html += '<span>&#128197; 月份</span>';
+  html += '<span class="ms-count" id="ms-count-month"' + (state.filters.month.length ? '' : ' style="display:none"') + '>' + state.filters.month.length + '</span>';
+  html += '<span class="ms-caret">&#9662;</span></div>';
+  html += '<div class="ms-menu" id="ms-menu-month">';
+  if (months.length > 0) {
+    html += '<div class="ms-select-all"><span onclick="selectAllFilter(\'month\')">全选</span><span class="ms-clear" onclick="clearFilter(\'month\')">清空</span></div>';
+    months.forEach(function(m) {
+      var ck = state.filters.month.indexOf(m) !== -1 ? ' checked' : '';
+      html += '<label class="ms-option" onclick="event.stopPropagation()"><input type="checkbox" value="' + m + '"' + ck + ' onchange="toggleFilter(\'month\',this.value)">' + m + '</label>';
+    });
+  } else {
+    html += '<div style="padding:8px 12px;color:#999;font-size:12px">暂无月份数据</div>';
+  }
+  html += '</div></div>';
+  // Reset button
+  if (state.filters.dept.length || state.filters.version.length || state.filters.month.length) {
+    html += '<button class="btn btn-sm" onclick="resetFilters()">重置筛选</button>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function updateFilterCounts() {
+  ['dept','version','month'].forEach(function(k) {
+    var el = document.getElementById('ms-count-' + k);
+    if (el) {
+      var n = state.filters[k].length;
+      el.textContent = n;
+      el.style.display = n > 0 ? '' : 'none';
+    }
+  });
+}
+
+function renderDataArea() {
+  var area = document.getElementById('dataArea');
+  if (!area) return;
+  var filteredProjects = getFilteredProjects();
+  var totalEstimate = filteredProjects.reduce(function(s, p) { return s + getTotalEstimate(p); }, 0);
+  var allMonths = getAllMonths(filteredProjects);
+  var monthRange = allMonths.length > 0 ? (allMonths[0] + ' ~ ' + allMonths[allMonths.length - 1]) : '-';
+  var html = '';
+  html += '<div class="summary-cards">';
+  html += '<div class="summary-card"><div class="label">预估投入合计</div><div class="value">' + formatMoney(totalEstimate) + '<span class="unit">人月</span></div></div>';
+  html += '<div class="summary-card"><div class="label">覆盖月份</div><div class="value">' + allMonths.length + '<span class="unit">个月</span></div></div>';
+  html += '<div class="summary-card"><div class="label">时间范围</div><div class="value" style="font-size:14px">' + monthRange + '</div></div>';
+  html += '<div class="summary-card"><div class="label">历史版本</div><div class="value">' + state.versions.length + '<span class="unit">个</span></div></div>';
+  html += '</div>';
+  html += '<div class="toolbar">';
+  html += '<button class="btn btn-primary" onclick="openEntryModal()">&#10133; 手动录入</button>';
+  html += '<button class="btn" onclick="openImportModal()">&#11015; 导入数据</button>';
+  html += '<button class="btn" onclick="exportData()">&#11015; 导出当前数据</button>';
+  if (state.currentTab === 'monthly') {
+    html += '<button class="btn" onclick="exportMonthlyData()">&#128202; 导出月度拆分数据</button>';
+  }
+  html += '<button class="btn" onclick="downloadTemplate()">&#11015; 下载模板</button>';
+  html += '<div class="spacer"></div>';
+  html += '<button class="btn" onclick="openVersionModal()">&#128336; 历史版本(' + state.versions.length + ')</button>';
+  html += '</div>';
+  // Selection bar
+  if (state.selectedIds.length > 0) {
+    var allSelected = filteredProjects.length > 0 && filteredProjects.every(function(p) { return state.selectedIds.indexOf(p.id) !== -1; });
+    html += '<div class="selection-bar">';
+    html += '<input type="checkbox" ' + (allSelected ? 'checked' : '') + ' onchange="toggleSelectAll()" style="cursor:pointer" />';
+    html += '<span class="selection-count">已选中 ' + state.selectedIds.length + ' 个项目</span>';
+    html += '<button class="btn btn-danger" onclick="batchDelete()">&#128465; 批量删除</button>';
+    html += '<button class="btn" onclick="clearSelection()">取消选择</button>';
+    html += '</div>';
+  }
+  if (state.currentTab === 'overview') {
+    html += renderOverviewTable(filteredProjects);
+  } else {
+    html += renderMonthlyTable(filteredProjects);
+  }
+  area.innerHTML = html;
+  updateFilterCounts();
+}
+
+// ===== Rendering =====
+function render() {
+  renderNav();
+  renderMain();
+}
+
+function renderNav() {
+  document.querySelectorAll('.nav-item').forEach(function(el) {
+    el.classList.remove('active');
+    if (el.dataset.nav === state.currentNav) {
+      el.classList.add('active');
+    }
+  });
+  document.getElementById('pageTitle').textContent = NAV_TITLES[state.currentNav] || '';
+}
+
+function renderMain() {
+  const body = document.getElementById('mainBody');
+
+  if (state.currentNav !== 'tos') {
+    body.innerHTML = '<div class="coming-soon"><div class="icon">&#128640;</div><h3>' + (NAV_TITLES[state.currentNav] || '') + '</h3><p>该模块正在建设中，敬请期待...</p></div>';
+    return;
+  }
+
+  let html = '';
+  html += '<div class="tabs">';
+  html += '<div class="tab ' + (state.currentTab === 'overview' ? 'active' : '') + '" onclick="switchTab(\'overview\')">&#128203; 项目预估数据总览</div>';
+  html += '<div class="tab ' + (state.currentTab === 'monthly' ? 'active' : '') + '" onclick="switchTab(\'monthly\')">&#128197; 项目月度预估数据</div>';
+  html += '</div>';
+  html += renderFilterBar();
+  html += '<div id="dataArea"></div>';
+  body.innerHTML = html;
+  renderDataArea();
+}
+
+function renderOverviewTable(projects) {
+  if (!projects || projects.length === 0) {
+    return '<div class="empty-state"><div class="icon">&#128466;</div><p>暂无项目数据，请点击「手动录入」或「导入数据」添加</p></div>';
+  }
+
+  let html = '<div class="table-wrapper"><table><thead><tr>';
+  // Checkbox column header (select-all)
+  var allSelected = projects.length > 0 && projects.every(function(p) { return state.selectedIds.indexOf(p.id) !== -1; });
+  html += '<th style="width:40px;text-align:center"><input type="checkbox" ' + (allSelected ? 'checked' : '') + ' onchange="toggleSelectAll()" style="cursor:pointer" /></th>';
+  html += '<th style="min-width:120px">操作</th>';
+  html += '<th class="col-sticky" style="min-width:160px">项目名称</th>';
+  html += '<th style="min-width:100px">一级部门</th>';
+  html += '<th style="min-width:100px">二级部门</th>';
+  // Estimate columns
+  STAGES.forEach(function(s) {
+    html += '<th class="text-right" style="min-width:140px">' + s.name + '预估投入</th>';
+  });
+  html += '<th class="text-right" style="min-width:120px">预估投入合计</th>';
+  // Date columns
+  html += '<th style="min-width:110px">规划KO日期</th>';
+  html += '<th style="min-width:110px">Charter启动</th>';
+  html += '<th style="min-width:100px">STR1日期</th>';
+  html += '<th style="min-width:100px">STR3日期</th>';
+  html += '<th style="min-width:100px">STR5日期</th>';
+  html += '<th style="min-width:100px">MR日期</th>';
+  html += '<th style="min-width:110px">维护期结束</th>';
+  // Duration columns
+  STAGES.forEach(function(s) {
+    html += '<th class="text-right" style="min-width:100px">' + s.name + '工期</th>';
+  });
+  html += '</tr></thead><tbody>';
+
+  projects.forEach(function(p) {
+    var isSelected = state.selectedIds.indexOf(p.id) !== -1;
+    html += '<tr>';
+    html += '<td class="text-center"><input type="checkbox" ' + (isSelected ? 'checked' : '') + ' onchange="toggleSelect(\'' + p.id + '\')" style="cursor:pointer" /></td>';
+    html += '<td class="text-center" style="white-space:nowrap">';
+    html += '<button class="btn-link" onclick="openEntryModal(\'' + p.id + '\')">编辑</button>';
+    html += '<button class="btn-link" style="color:#ff4d4f" onclick="deleteProject(\'' + p.id + '\')">删除</button>';
+    html += '</td>';
+    html += '<td class="col-sticky">' + (p.projectName || '') + '</td>';
+    html += '<td>' + (p.primaryDept || '') + '</td>';
+    html += '<td>' + (p.secondaryDept || '') + '</td>';
+    STAGES.forEach(function(s) {
+      html += '<td class="text-right">' + formatMoney(p[s.estimateField]) + '</td>';
+    });
+    html += '<td class="text-right" style="font-weight:600;color:#1890ff">' + formatMoney(getTotalEstimate(p)) + '</td>';
+    html += '<td class="text-center">' + formatDate(p.planningKODate) + '</td>';
+    html += '<td class="text-center">' + formatDate(p.charterStartDate) + '</td>';
+    html += '<td class="text-center">' + formatDate(p.str1Date) + '</td>';
+    html += '<td class="text-center">' + formatDate(p.str3Date) + '</td>';
+    html += '<td class="text-center">' + formatDate(p.str5Date) + '</td>';
+    html += '<td class="text-center">' + formatDate(p.mrDate) + '</td>';
+    html += '<td class="text-center">' + formatDate(p.maintenanceEndDate) + '</td>';
+    STAGES.forEach(function(s) {
+      html += '<td class="text-right">' + (p[s.durationField] || '-') + '</td>';
+    });
+    html += '</tr>';
+  });
+
+  // Summary row
+  const grandTotalEst = projects.reduce(function(s, p) { return s + getTotalEstimate(p); }, 0);
+  html += '<tr class="summary-row">';
+  html += '<td></td>';
+  html += '<td></td>';
+  html += '<td class="col-sticky">合计</td>';
+  html += '<td></td><td></td>';
+  STAGES.forEach(function(s) {
+    const sum = projects.reduce(function(sum, p) { return sum + (parseFloat(p[s.estimateField]) || 0); }, 0);
+    html += '<td class="text-right">' + formatMoney(sum) + '</td>';
+  });
+  html += '<td class="text-right" style="color:#1890ff">' + formatMoney(grandTotalEst) + '</td>';
+  html += '<td colspan="13"></td>';
+  html += '</tr>';
+
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function renderMonthlyTable(projects) {
+  if (!projects || projects.length === 0) {
+    return '<div class="empty-state"><div class="icon">&#128466;</div><p>暂无项目数据，请先在「项目预估数据总览」中录入或导入数据</p></div>';
+  }
+
+  const allMonths = getAllMonths(projects);
+  if (allMonths.length === 0) {
+    return '<div class="empty-state"><div class="icon">&#128197;</div><p>暂无有效月度数据，请检查项目日期和工期是否填写完整</p></div>';
+  }
+
+  // If month filter is selected, only show that month
+  const displayMonths = (state.filters.month && state.filters.month.length > 0) ? allMonths.filter(function(m) { return state.filters.month.indexOf(m) !== -1; }) : allMonths;
+
+  // Pre-calculate all monthly data
+  const projectMonthly = {};
+  projects.forEach(function(p) {
+    projectMonthly[p.id] = calculateMonthlyData(p);
+  });
+
+  let html = '<div class="table-wrapper"><table><thead><tr>';
+  html += '<th style="min-width:80px">操作</th>';
+  html += '<th class="col-sticky" style="min-width:180px">项目名称</th>';
+  html += '<th style="min-width:90px">一级部门</th>';
+  html += '<th style="min-width:90px">二级部门</th>';
+  displayMonths.forEach(function(m) {
+    html += '<th class="text-right" style="min-width:110px">' + m + '</th>';
+  });
+  html += '<th class="text-right" style="min-width:120px">合计</th>';
+  html += '</tr></thead><tbody>';
+
+  const monthlyTotals = {};
+
+  projects.forEach(function(p) {
+    const mData = projectMonthly[p.id];
+    let rowTotal = 0;
+
+    html += '<tr>';
+    html += '<td class="text-center"><button class="btn-link" onclick="openDetailModal(\'' + p.id + '\')">详情</button></td>';
+    html += '<td class="col-sticky">' + (p.projectName || '') + '</td>';
+    html += '<td>' + (p.primaryDept || '') + '</td>';
+    html += '<td>' + (p.secondaryDept || '') + '</td>';
+
+    displayMonths.forEach(function(m) {
+      const val = mData[m] ? mData[m].total : 0;
+      rowTotal += val;
+      if (!monthlyTotals[m]) monthlyTotals[m] = 0;
+      monthlyTotals[m] += val;
+      html += '<td class="text-right">' + (val > 0 ? formatMoney(val) : '-') + '</td>';
+    });
+
+    html += '<td class="text-right" style="font-weight:600;color:#1890ff">' + formatMoney(rowTotal) + '</td>';
+    html += '</tr>';
+  });
+
+  // Summary row
+  html += '<tr class="summary-row">';
+  html += '<td></td>';
+  html += '<td class="col-sticky">月度合计</td>';
+  html += '<td></td><td></td>';
+  let grandTotal = 0;
+  displayMonths.forEach(function(m) {
+    const val = monthlyTotals[m] || 0;
+    grandTotal += val;
+    html += '<td class="text-right">' + formatMoney(val) + '</td>';
+  });
+  html += '<td class="text-right" style="color:#1890ff">' + formatMoney(grandTotal) + '</td>';
+  html += '</tr>';
+
+  html += '</tbody></table></div>';
+  return html;
+}
+
+// ===== Form =====
+function renderFormFields() {
+  // Estimate fields
+  let estimateHtml = '';
+  FIELDS.filter(function(f) { return f.group === 'estimate'; }).forEach(function(f) {
+    estimateHtml += '<div class="form-item"><label>' + f.label + '</label><div class="input-group"><input type="number" id="f_' + f.key + '" step="0.01"><span class="suffix">人月</span></div></div>';
+  });
+  document.getElementById('estimateFields').innerHTML = estimateHtml;
+
+  // Date fields
+  let dateHtml = '';
+  FIELDS.filter(function(f) { return f.group === 'date'; }).forEach(function(f) {
+    dateHtml += '<div class="form-item"><label>' + f.label + '</label><input type="date" id="f_' + f.key + '"></div>';
+  });
+  document.getElementById('dateFields').innerHTML = dateHtml;
+
+  // Duration fields
+  let durationHtml = '';
+  FIELDS.filter(function(f) { return f.group === 'duration'; }).forEach(function(f) {
+    durationHtml += '<div class="form-item"><label>' + f.label + '</label><div class="input-group"><input type="number" id="f_' + f.key + '" step="1" min="0"><span class="suffix">天</span></div></div>';
+  });
+  document.getElementById('durationFields').innerHTML = durationHtml;
+}
+
+function openEntryModal(projectId) {
+  renderFormFields();
+  state.editingProjectId = projectId || null;
+
+  if (projectId) {
+    document.getElementById('entryModalTitle').textContent = '编辑项目预估数据';
+    const p = state.projects.find(function(x) { return x.id === projectId; });
+    if (p) {
+      FIELDS.forEach(function(f) {
+        const el = document.getElementById('f_' + f.key);
+        if (el) el.value = p[f.key] || '';
+      });
+    }
+  } else {
+    document.getElementById('entryModalTitle').textContent = '录入项目预估数据';
+    FIELDS.forEach(function(f) {
+      const el = document.getElementById('f_' + f.key);
+      if (el) el.value = '';
+    });
+  }
+
+  document.getElementById('entryModal').classList.add('show');
+}
+
+function closeEntryModal() {
+  document.getElementById('entryModal').classList.remove('show');
+  state.editingProjectId = null;
+}
+
+function saveProjectFromForm() {
+  const data = {};
+  let hasError = false;
+
+  FIELDS.forEach(function(f) {
+    const el = document.getElementById('f_' + f.key);
+    if (el) {
+      data[f.key] = el.value.trim();
+      if ((f.key === 'projectName' || f.key === 'primaryDept') && !data[f.key]) {
+        hasError = true;
+      }
+    }
+  });
+
+  if (hasError) {
+    showToast('请填写必填字段（项目名称、一级部门）', 'error');
+    return;
+  }
+
+  if (state.editingProjectId) {
+    const idx = state.projects.findIndex(function(x) { return x.id === state.editingProjectId; });
+    if (idx >= 0) {
+      data.id = state.editingProjectId;
+      data.createdAt = state.projects[idx].createdAt;
+      state.projects[idx] = data;
+    }
+    showToast('项目数据已更新', 'success');
+  } else {
+    data.id = generateId();
+    data.createdAt = new Date().toISOString();
+    state.projects.push(data);
+    showToast('项目数据已添加', 'success');
+  }
+
+  saveData();
+  closeEntryModal();
+  renderMain();
+}
+
+function deleteProject(id) {
+  if (!confirm('确定要删除该项目吗？此操作不可撤销。')) return;
+  state.projects = state.projects.filter(function(x) { return x.id !== id; });
+  saveData();
+  showToast('项目已删除', 'success');
+  renderMain();
+}
+
+// ===== Import/Export =====
+function openImportModal() {
+  document.getElementById('importModal').classList.add('show');
+}
+
+function closeImportModal() {
+  document.getElementById('importModal').classList.remove('show');
+  document.getElementById('fileInput').value = '';
+}
+
+function handleFileImport(file) {
+  if (!file) return;
+
+  const reader = new FileReader();
+  const isCsv = file.name.toLowerCase().endsWith('.csv');
+
+  reader.onload = function(e) {
+    try {
+      let rows = [];
+      if (isCsv) {
+        const text = e.target.result;
+        rows = parseCSV(text);
+      } else {
+        const wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      }
+
+      if (rows.length < 2) {
+        showToast('文件内容为空或只有表头', 'error');
+        return;
+      }
+
+      const headers = rows[0].map(function(h) { return String(h).trim(); });
+      const dataRows = rows.slice(1);
+
+      // Save current as version before import
+      if (state.projects.length > 0) {
+        saveVersionSilent('导入前自动备份');
+      }
+
+      let imported = 0;
+      let errors = 0;
+      const newProjects = [];
+
+      dataRows.forEach(function(row, idx) {
+        if (row.every(function(c) { return !c || String(c).trim() === ''; })) return;
+        const obj = {};
+        headers.forEach(function(h, i) {
+          const key = HEADER_MAP[h];
+          if (key && row[i] !== undefined && row[i] !== '') {
+            let val = row[i];
+            if (typeof val === 'object' && val instanceof Date) {
+              val = formatDateStr(val);
+            } else {
+              val = String(val).trim();
+            }
+            obj[key] = val;
+          }
+        });
+
+        if (!obj.projectName) {
+          errors++;
+          return;
+        }
+
+        obj.id = generateId();
+        obj.createdAt = new Date().toISOString();
+        newProjects.push(obj);
+        imported++;
+      });
+
+      if (imported > 0) {
+        state.projects = newProjects.concat(state.projects);
+        saveData();
+        showToast('成功导入 ' + imported + ' 条数据' + (errors > 0 ? '，' + errors + ' 条无效数据已跳过' : ''), 'success');
+        closeImportModal();
+        renderMain();
+      } else {
+        showToast('未导入任何有效数据，请检查文件格式和表头', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('导入失败：' + err.message, 'error');
+    }
+  };
+
+  if (isCsv) {
+    reader.readAsText(file, 'UTF-8');
+  } else {
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/);
+  const result = [];
+  lines.forEach(function(line) {
+    if (line.trim() === '') return;
+    // Simple CSV parse (handles quoted fields)
+    const cells = [];
+    let current = '';
+    let inQuote = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        inQuote = !inQuote;
+      } else if (ch === ',' && !inQuote) {
+        cells.push(current);
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+    cells.push(current);
+    result.push(cells);
+  });
+  return result;
+}
+
+function buildExportHeaders() {
+  const headers = [];
+  FIELDS.forEach(function(f) {
+    headers.push(f.label);
+    if (f.key === 'maintenanceEstimate') {
+      headers.push('预估投入合计');
+    }
+  });
+  return headers;
+}
+
+function buildExportRow(p) {
+  const row = [];
+  FIELDS.forEach(function(f) {
+    row.push(p[f.key] || '');
+    if (f.key === 'maintenanceEstimate') {
+      row.push(getTotalEstimate(p));
+    }
+  });
+  return row;
+}
+
+function downloadTemplate() {
+  const headers = buildExportHeaders();
+  const sampleRow = buildExportRow({
+    projectName: 'tOS 17.0 数据看板', primaryDept: '研发部', secondaryDept: '平台开发组',
+    planningEstimate: '500000', conceptEstimate: '800000', planEstimate: '1200000',
+    devVerifyEstimate: '3500000', launchEstimate: '600000', maintenanceEstimate: '900000',
+    planningKODate: '2025-01-15', charterStartDate: '2025-02-01', str1Date: '2025-03-15',
+    str3Date: '2025-06-01', str5Date: '2025-09-15', mrDate: '2025-11-01', maintenanceEndDate: '2026-11-01',
+    planningDuration: '17', conceptDuration: '42', planDuration: '78',
+    devVerifyDuration: '106', launchDuration: '47', maintenanceDuration: '365'
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, sampleRow]);
+  ws['!cols'] = headers.map(function() { return {wch: 18}; });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '项目预估数据模板');
+  XLSX.writeFile(wb, '项目预估数据导入模板.xlsx');
+  showToast('模板已下载', 'success');
+}
+
+function exportData() {
+  if (state.projects.length === 0) {
+    showToast('暂无数据可导出', 'error');
+    return;
+  }
+
+  const headers = buildExportHeaders();
+  const data = [headers];
+  state.projects.forEach(function(p) {
+    data.push(buildExportRow(p));
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = headers.map(function() { return {wch: 18}; });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '项目预估数据');
+  const fileName = state.currentNav + '_项目预估数据_' + formatDateStr(new Date()) + '.xlsx';
+  XLSX.writeFile(wb, fileName);
+  showToast('数据已导出', 'success');
+}
+
+function exportMonthlyData() {
+  var projects = getFilteredProjects();
+  if (projects.length === 0) {
+    showToast('暂无数据可导出', 'error');
+    return;
+  }
+
+  var allMonths = getAllMonths(projects);
+  if (allMonths.length === 0) {
+    showToast('暂无有效月度数据可导出，请检查项目日期是否填写完整', 'error');
+    return;
+  }
+
+  var displayMonths = (state.filters.month && state.filters.month.length > 0)
+    ? allMonths.filter(function(m) { return state.filters.month.indexOf(m) !== -1; })
+    : allMonths;
+
+  // Build headers
+  var headers = ['项目名称', '一级部门', '二级部门'];
+  displayMonths.forEach(function(m) { headers.push(m); });
+  headers.push('合计');
+
+  var data = [headers];
+  var monthlyTotals = {};
+
+  projects.forEach(function(p) {
+    var mData = calculateMonthlyData(p);
+    var row = [p.projectName || '', p.primaryDept || '', p.secondaryDept || ''];
+    var rowTotal = 0;
+    displayMonths.forEach(function(m) {
+      var val = mData[m] ? mData[m].total : 0;
+      row.push(val > 0 ? Math.round(val * 100) / 100 : 0);
+      rowTotal += val;
+      if (!monthlyTotals[m]) monthlyTotals[m] = 0;
+      monthlyTotals[m] += val;
+    });
+    row.push(Math.round(rowTotal * 100) / 100);
+    data.push(row);
+  });
+
+  // Summary row
+  var summaryRow = ['月度合计', '', ''];
+  var grandTotal = 0;
+  displayMonths.forEach(function(m) {
+    var val = monthlyTotals[m] || 0;
+    summaryRow.push(Math.round(val * 100) / 100);
+    grandTotal += val;
+  });
+  summaryRow.push(Math.round(grandTotal * 100) / 100);
+  data.push(summaryRow);
+
+  var ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = headers.map(function(h, i) { return {wch: i < 3 ? 18 : 12}; });
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '月度拆分数据');
+  var fileName = '项目月度预估数据_' + formatDateStr(new Date()) + '.xlsx';
+  XLSX.writeFile(wb, fileName);
+  showToast('月度数据已导出', 'success');
+}
+
+// ===== Version Management =====
+function openVersionModal() {
+  renderVersionList();
+  document.getElementById('versionModal').classList.add('show');
+}
+
+function closeVersionModal() {
+  document.getElementById('versionModal').classList.remove('show');
+}
+
+function renderVersionList() {
+  const container = document.getElementById('versionList');
+  if (state.versions.length === 0) {
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:#8c8c8c">暂无历史版本</div>';
+    return;
+  }
+
+  let html = '<ul class="version-list">';
+  state.versions.slice().reverse().forEach(function(v) {
+    const projectCount = v.data ? v.data.length : 0;
+    const totalAmount = v.data ? v.data.reduce(function(s, p) { return s + getTotalEstimate(p); }, 0) : 0;
+    html += '<li class="version-item">';
+    html += '<div class="version-info">';
+    html += '<div class="version-name">v' + v.version + ' - ' + (v.description || '无描述') + '</div>';
+    html += '<div class="version-meta">' + v.timestamp + ' | ' + projectCount + '个项目 | ' + formatMoney(totalAmount) + ' 人月</div>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:4px">';
+    html += '<button class="btn btn-sm" onclick="restoreVersion(\'' + v.id + '\')">恢复</button>';
+    html += '<button class="btn btn-sm btn-danger" onclick="deleteVersion(\'' + v.id + '\')">删除</button>';
+    html += '</div>';
+    html += '</li>';
+  });
+  html += '</ul>';
+  container.innerHTML = html;
+}
+
+function saveCurrentVersion() {
+  const desc = document.getElementById('versionDesc').value.trim();
+  if (!desc) {
+    showToast('请输入版本描述', 'error');
+    return;
+  }
+  saveVersionSilent(desc);
+  document.getElementById('versionDesc').value = '';
+  renderVersionList();
+  renderMain();
+  showToast('版本已保存', 'success');
+}
+
+function saveVersionSilent(description) {
+  const version = {
+    id: 'v_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+    version: state.versions.length + 1,
+    timestamp: new Date().toLocaleString('zh-CN'),
+    description: description,
+    data: JSON.parse(JSON.stringify(state.projects)),
+  };
+  state.versions.push(version);
+  saveVersions();
+}
+
+function restoreVersion(versionId) {
+  const v = state.versions.find(function(x) { return x.id === versionId; });
+  if (!v) return;
+  if (!confirm('确定要恢复到版本 v' + v.version + '（' + (v.description || '') + '）吗？当前数据将被覆盖，当前数据会自动保存为新版本。')) return;
+
+  // Save current as version before restore
+  if (state.projects.length > 0) {
+    saveVersionSilent('恢复前自动备份');
+  }
+
+  state.projects = JSON.parse(JSON.stringify(v.data));
+  saveData();
+  renderVersionList();
+  renderMain();
+  showToast('已恢复到版本 v' + v.version, 'success');
+}
+
+function deleteVersion(versionId) {
+  if (!confirm('确定要删除该历史版本吗？此操作不可撤销。')) return;
+  state.versions = state.versions.filter(function(x) { return x.id !== versionId; });
+  saveVersions();
+  renderVersionList();
+  renderMain();
+  showToast('版本已删除', 'success');
+}
+
+// ===== Detail Modal =====
+function openDetailModal(projectId) {
+  const p = state.projects.find(function(x) { return x.id === projectId; });
+  if (!p) return;
+
+  const mData = calculateMonthlyData(p);
+  const months = Object.keys(mData).sort();
+  const body = document.getElementById('detailModalBody');
+
+  let html = '<div style="margin-bottom:16px">';
+  html += '<h3 style="font-size:16px;margin-bottom:8px">' + (p.projectName || '') + '</h3>';
+  html += '<p style="color:#8c8c8c;font-size:13px">' + (p.primaryDept || '') + ' / ' + (p.secondaryDept || '') + '</p>';
+  html += '<p style="color:#1890ff;font-size:14px;margin-top:4px">预估投入合计：' + formatMoney(getTotalEstimate(p)) + ' 人月</p>';
+  html += '</div>';
+
+  if (months.length === 0) {
+    html += '<div class="empty-state"><p>暂无有效月度数据，请检查日期和工期字段是否填写完整</p></div>';
+  } else {
+    html += '<div style="overflow:auto;max-height:400px"><table><thead><tr>';
+    html += '<th style="min-width:120px">阶段</th>';
+    months.forEach(function(m) {
+      html += '<th class="text-right" style="min-width:100px">' + m + '</th>';
+    });
+    html += '<th class="text-right" style="min-width:120px">阶段合计</th>';
+    html += '</tr></thead><tbody>';
+
+    STAGES.forEach(function(stage) {
+      const stageTotal = (parseFloat(p[stage.estimateField]) || 0);
+      html += '<tr>';
+      html += '<td>' + stage.name + '</td>';
+      let rowTotal = 0;
+      months.forEach(function(m) {
+        const val = mData[m].stages[stage.key] || 0;
+        rowTotal += val;
+        html += '<td class="text-right">' + (val > 0 ? formatMoney(val) : '-') + '</td>';
+      });
+      html += '<td class="text-right" style="font-weight:600">' + formatMoney(rowTotal) + '</td>';
+      html += '</tr>';
+    });
+
+    // Total row
+    html += '<tr class="summary-row">';
+    html += '<td>月度合计</td>';
+    let grandTotal = 0;
+    months.forEach(function(m) {
+      const val = mData[m].total;
+      grandTotal += val;
+      html += '<td class="text-right">' + formatMoney(val) + '</td>';
+    });
+    html += '<td class="text-right" style="color:#1890ff">' + formatMoney(grandTotal) + '</td>';
+    html += '</tr>';
+
+    html += '</tbody></table></div>';
+
+    // Stage breakdown
+    html += '<div style="margin-top:16px;padding:12px;background:#e6f7ff;border-radius:6px;font-size:12px;color:#595959">';
+    html += '<strong>拆分规则说明：</strong><br>';
+    html += '每日投入 = 阶段预估投入 / 阶段实际天数（由日期范围计算）<br>';
+    html += '每月投入 = 该月每日投入的聚合<br><br>';
+    STAGES.forEach(function(stage) {
+      const est = parseFloat(p[stage.estimateField]) || 0;
+      const startD = parseDate(p[stage.startField]);
+      const endD = parseDate(p[stage.endField]);
+      let actualDays = 0;
+      let daily = 0;
+      if (startD && endD && startD <= endD && est) {
+        actualDays = Math.floor((endD - startD) / 86400000) + 1;
+        daily = actualDays > 0 ? est / actualDays : 0;
+      }
+      html += stage.name + '：预估 ' + formatMoney(est) + ' 人月 / 实际 ' + actualDays + ' 天 = 每日 ' + formatMoney(daily) + ' 人月<br>';
+    });
+    html += '</div>';
+  }
+
+  body.innerHTML = html;
+  document.getElementById('detailModal').classList.add('show');
+}
+
+function closeDetailModal() {
+  document.getElementById('detailModal').classList.remove('show');
+}
+
+// ===== Navigation =====
+function switchNav(nav) {
+  if (nav !== 'tos') {
+    showToast('该模块正在建设中，敬请期待', 'info');
+    return;
+  }
+  state.currentNav = nav;
+  state.currentTab = 'overview';
+  state.selectedIds = [];
+  loadData();
+  render();
+}
+
+function switchTab(tab) {
+  state.currentTab = tab;
+  state.selectedIds = [];
+  renderMain();
+}
+
+// ===== Sample Data =====
+function getSampleData() {
+  return [
+    {
+      id: 'sample_001',
+      projectName: 'tOS 17.0 数据看板',
+      primaryDept: '研发部',
+      secondaryDept: '平台开发组',
+      planningEstimate: '500000',
+      conceptEstimate: '800000',
+      planEstimate: '1200000',
+      devVerifyEstimate: '3500000',
+      launchEstimate: '600000',
+      maintenanceEstimate: '900000',
+      planningKODate: '2025-01-15',
+      charterStartDate: '2025-02-01',
+      str1Date: '2025-03-15',
+      str3Date: '2025-06-01',
+      str5Date: '2025-09-15',
+      mrDate: '2025-11-01',
+      maintenanceEndDate: '2026-11-01',
+      planningDuration: '17',
+      conceptDuration: '42',
+      planDuration: '78',
+      devVerifyDuration: '106',
+      launchDuration: '47',
+      maintenanceDuration: '365',
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'sample_002',
+      projectName: 'tOS 18.0 智能分析平台',
+      primaryDept: '研发部',
+      secondaryDept: 'AI应用组',
+      planningEstimate: '300000',
+      conceptEstimate: '500000',
+      planEstimate: '900000',
+      devVerifyEstimate: '2800000',
+      launchEstimate: '400000',
+      maintenanceEstimate: '600000',
+      planningKODate: '2025-04-01',
+      charterStartDate: '2025-04-20',
+      str1Date: '2025-06-01',
+      str3Date: '2025-08-15',
+      str5Date: '2025-12-01',
+      mrDate: '2026-01-15',
+      maintenanceEndDate: '2027-01-15',
+      planningDuration: '19',
+      conceptDuration: '42',
+      planDuration: '75',
+      devVerifyDuration: '108',
+      launchDuration: '45',
+      maintenanceDuration: '365',
+      createdAt: new Date().toISOString(),
+    },
+  ];
+}
+
+// ===== Drag & Drop =====
+function setupDragDrop() {
+  const drop = document.getElementById('fileDrop');
+  if (!drop) return;
+  drop.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    drop.classList.add('dragover');
+  });
+  drop.addEventListener('dragleave', function() {
+    drop.classList.remove('dragover');
+  });
+  drop.addEventListener('drop', function(e) {
+    e.preventDefault();
+    drop.classList.remove('dragover');
+    if (e.dataTransfer.files.length > 0) {
+      handleFileImport(e.dataTransfer.files[0]);
+    }
+  });
+}
+
+// ===== Init =====
+function init() {
+  loadData();
+  render();
+  setupDragDrop();
+  // Close dropdowns when clicking outside
+  document.addEventListener('click', function(e) {
+    var el = e.target;
+    var inside = false;
+    while (el) {
+      if (el.classList && el.classList.contains('ms-dropdown')) { inside = true; break; }
+      el = el.parentElement;
+    }
+    if (!inside) {
+      ['dept','version','month'].forEach(function(k) {
+        var m = document.getElementById('ms-menu-' + k);
+        if (m) m.classList.remove('open');
+      });
+    }
+  });
+}
+
+// Run when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+
+</body>
+</html>
