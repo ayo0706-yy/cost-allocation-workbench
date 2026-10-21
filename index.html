@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>成本看板 - 按日分摊测算工作台</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:"Microsoft YaHei","Segoe UI",sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -72,6 +73,20 @@ body{font-family:"Microsoft YaHei","Segoe UI",sans-serif;background:#f0f2f5;colo
 .summary-card .label{font-size:12px;color:#8c8c8c;margin-bottom:6px}
 .summary-card .value{font-size:22px;font-weight:600;color:#1890ff}
 .summary-card .unit{font-size:13px;color:#8c8c8c;margin-left:4px;font-weight:normal}
+/* Year cards */
+.year-cards{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:stretch}
+.year-card{border-radius:8px;padding:14px 20px;min-width:160px;color:#fff;flex:1;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:transform .2s}
+.year-card:hover{transform:translateY(-2px)}
+.year-card .year-label{font-size:14px;opacity:.9;margin-bottom:6px;font-weight:500}
+.year-card .year-value{font-size:22px;font-weight:600}
+.year-card .year-unit{font-size:12px;opacity:.8;margin-left:4px;font-weight:normal}
+.year-card .year-months{font-size:11px;opacity:.7;margin-top:6px}
+.year-card-0{background:linear-gradient(135deg,#1890ff,#36cfc9)}
+.year-card-1{background:linear-gradient(135deg,#722ed1,#9254de)}
+.year-card-2{background:linear-gradient(135deg,#fa8c16,#ffa940)}
+.year-card-3{background:linear-gradient(135deg,#52c41a,#73d13d)}
+.year-card-4{background:linear-gradient(135deg,#eb2f96,#f759ab)}
+.year-card-5{background:linear-gradient(135deg,#13c2c2,#5cdbd3)}
 /* Table */
 .table-wrapper{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);overflow:auto}
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -163,7 +178,10 @@ tr.summary-row .col-sticky{background:#fafafa}
     <nav class="sidebar-nav">
       <div class="nav-section">
         <div class="nav-section-title">项目分类</div>
-        <div class="nav-item active" data-nav="tos" onclick="switchNav('tos')">
+        <div class="nav-item active" data-nav="device" onclick="switchNav('device')">
+          <span class="icon">📱</span> 整机产品项目
+        </div>
+        <div class="nav-item" data-nav="tos" onclick="switchNav('tos')">
           <span class="icon">📊</span> tOS项目
         </div>
         <div class="nav-item disabled" data-nav="tech" onclick="switchNav('tech')">
@@ -181,7 +199,7 @@ tr.summary-row .col-sticky{background:#fafafa}
     <div class="main-header">
       <div>
         <span class="breadcrumb">成本看板 / </span>
-        <h2 id="pageTitle" style="display:inline">tOS项目 - 按日分摊测算</h2>
+        <h2 id="pageTitle" style="display:inline">整机产品项目 - 按日分摊测算</h2>
       </div>
     </div>
     <div class="main-body" id="mainBody"></div>
@@ -199,20 +217,7 @@ tr.summary-row .col-sticky{background:#fafafa}
       <form id="entryForm" onsubmit="return false">
         <div class="form-section">
           <div class="form-section-title">基本信息</div>
-          <div class="form-grid">
-            <div class="form-item">
-              <label>项目名称 <span class="req">*</span></label>
-              <input type="text" id="f_projectName" required="">
-            </div>
-            <div class="form-item">
-              <label>一级部门 <span class="req">*</span></label>
-              <input type="text" id="f_primaryDept" required="">
-            </div>
-            <div class="form-item">
-              <label>二级部门</label>
-              <input type="text" id="f_secondaryDept">
-            </div>
-          </div>
+          <div class="form-grid" id="basicFields"></div>
         </div>
         <div class="form-section">
           <div class="form-section-title">各阶段预估投入（人月）</div>
@@ -304,7 +309,28 @@ tr.summary-row .col-sticky{background:#fafafa}
 
 <script>
 // ===== Configuration =====
-const STAGES = [
+// ===== Configuration (moved to dynamic config above) =====
+const HEADER_MAP = {};
+function rebuildHeaderMap() {
+  Object.keys(HEADER_MAP).forEach(function(k) { delete HEADER_MAP[k]; });
+  getFields().forEach(function(f) {
+    HEADER_MAP[f.label] = f.key;
+    if (f.type === 'date') {
+      var stripped = f.label.replace(/\(日期\)/g, '').replace(/（日期）/g, '');
+      HEADER_MAP[stripped] = f.key;
+    }
+  });
+}
+
+const NAV_TITLES = {
+  device: '整机产品项目 - 按日分摊测算',
+  tos: 'tOS项目 - 按日分摊测算',
+  tech: '技术项目 - 按日分摊测算',
+  capability: '能力建设项目 - 按日分摊测算',
+};
+
+// ===== tOS Stage Configuration =====
+const TOS_STAGES = [
   {key:'planning',name:'规划阶段',estimateField:'planningEstimate',durationField:'planningDuration',startField:'planningKODate',endField:'charterStartDate'},
   {key:'concept',name:'概念阶段',estimateField:'conceptEstimate',durationField:'conceptDuration',startField:'charterStartDate',endField:'str1Date'},
   {key:'plan',name:'计划阶段',estimateField:'planEstimate',durationField:'planDuration',startField:'str1Date',endField:'str3Date'},
@@ -313,7 +339,7 @@ const STAGES = [
   {key:'maintenance',name:'维护',estimateField:'maintenanceEstimate',durationField:'maintenanceDuration',startField:'mrDate',endField:'maintenanceEndDate'},
 ];
 
-const FIELDS = [
+const TOS_FIELDS = [
   {key:'projectName',label:'项目名称',type:'text',group:'basic'},
   {key:'primaryDept',label:'一级部门',type:'text',group:'basic'},
   {key:'secondaryDept',label:'二级部门',type:'text',group:'basic'},
@@ -338,24 +364,91 @@ const FIELDS = [
   {key:'maintenanceDuration',label:'维护工期',type:'number',group:'duration'},
 ];
 
-const HEADER_MAP = {};
-FIELDS.forEach(f => HEADER_MAP[f.label] = f.key);
-HEADER_MAP['规划KO日期'] = 'planningKODate';
+// ===== Device Product Stage Configuration =====
+const DEVICE_STAGES = [
+  {key:'conceptToStr1',name:'概念启动~STR1',estimateField:'conceptToStr1Estimate',durationField:'conceptToStr1Duration',startField:'conceptStartDate',endField:'str1Date'},
+  {key:'str1ToStr3',name:'STR1~STR3',estimateField:'str1ToStr3Estimate',durationField:'str1ToStr3Duration',startField:'str1Date',endField:'str3Date'},
+  {key:'str3ToStr4',name:'STR3~STR4',estimateField:'str3ToStr4Estimate',durationField:'str3ToStr4Duration',startField:'str3Date',endField:'str4Date'},
+  {key:'str4ToStr4a',name:'STR4~STR4A',estimateField:'str4ToStr4aEstimate',durationField:'str4ToStr4aDuration',startField:'str4Date',endField:'str4aDate'},
+  {key:'str4aToStr5',name:'STR4A~STR5',estimateField:'str4aToStr5Estimate',durationField:'str4aToStr5Duration',startField:'str4aDate',endField:'str5Date'},
+  {key:'str5Plus6m',name:'STR5+6个月',estimateField:'str5Plus6mEstimate',durationField:'str5Plus6mDuration',startField:'str5Date',endField:'str5Plus6mEndDate'},
+];
 
-const NAV_TITLES = {
-  tos: 'tOS项目 - 按日分摊测算',
-  tech: '技术项目 - 按日分摊测算',
-  capability: '能力建设项目 - 按日分摊测算',
-};
+const DEVICE_FIELDS = [
+  {key:'projectName',label:'项目名称',type:'text',group:'basic'},
+  {key:'marketName',label:'市场名称',type:'text',group:'basic'},
+  {key:'brand',label:'品牌',type:'text',group:'basic'},
+  {key:'productLine',label:'产品线',type:'text',group:'basic'},
+  {key:'projectLevel',label:'项目等级',type:'text',group:'basic'},
+  {key:'levelCoefficient',label:'等级系数',type:'number',group:'basic'},
+  {key:'secondaryDept',label:'二级部门',type:'text',group:'basic'},
+  {key:'conceptToStr1Estimate',label:'概念启动~STR1投入',type:'number',group:'estimate'},
+  {key:'str1ToStr3Estimate',label:'STR1~STR3投入',type:'number',group:'estimate'},
+  {key:'str3ToStr4Estimate',label:'STR3~STR4投入',type:'number',group:'estimate'},
+  {key:'str4ToStr4aEstimate',label:'STR4~STR4A投入',type:'number',group:'estimate'},
+  {key:'str4aToStr5Estimate',label:'STR4A~STR5投入',type:'number',group:'estimate'},
+  {key:'str5Plus6mEstimate',label:'STR5+6个月投入',type:'number',group:'estimate'},
+  {key:'conceptStartDate',label:'概念启动',type:'date',group:'date'},
+  {key:'str1Date',label:'STR1',type:'date',group:'date'},
+  {key:'str3Date',label:'STR3',type:'date',group:'date'},
+  {key:'str4Date',label:'STR4',type:'date',group:'date'},
+  {key:'str4aDate',label:'STR4A',type:'date',group:'date'},
+  {key:'str5Date',label:'STR5',type:'date',group:'date'},
+  {key:'str5Plus6mDate',label:'STR5+6个月',type:'date',group:'date'},
+  {key:'conceptToStr1Duration',label:'概念启动~STR1工期',type:'number',group:'duration'},
+  {key:'str1ToStr3Duration',label:'STR1~STR3工期',type:'number',group:'duration'},
+  {key:'str3ToStr4Duration',label:'STR3~STR4工期',type:'number',group:'duration'},
+  {key:'str4ToStr4aDuration',label:'STR4~STR4A工期',type:'number',group:'duration'},
+  {key:'str4aToStr5Duration',label:'STR4A~STR5工期',type:'number',group:'duration'},
+  {key:'str5Plus6mDuration',label:'STR5+6个月工期',type:'number',group:'duration'},
+];
+
+// ===== Active Config (dynamic based on currentNav) =====
+function getStages() { return state.currentNav === 'device' ? DEVICE_STAGES : TOS_STAGES; }
+function getFields() { return state.currentNav === 'device' ? DEVICE_FIELDS : TOS_FIELDS; }
+function getBasicFields() { return getFields().filter(function(f) { return f.group === 'basic'; }); }
+function getEstimateFields() { return getFields().filter(function(f) { return f.group === 'estimate'; }); }
+function getDateFields() { return getFields().filter(function(f) { return f.group === 'date'; }); }
+function getDurationFields() { return getFields().filter(function(f) { return f.group === 'duration'; }); }
+function getLastEstimateKey() { var s = getStages(); return s[s.length - 1].estimateField; }
+function getFilterConfig() {
+  if (state.currentNav === 'device') return {key: 'brand', label: '品牌', field: 'brand', icon: '\uD83C\uDFF7\uFE0F'};
+  return {key: 'dept', label: '部门', field: 'primaryDept', icon: '\uD83C\uDFE2'};
+}
+function getExtraFilterConfigs() {
+  if (state.currentNav === 'device') return [{key: 'secondaryDept', label: '二级部门', field: 'secondaryDept', icon: '\uD83C\uDFE2'}];
+  return [];
+}
+function getAllFilterKeys() {
+  var fc = getFilterConfig();
+  var extra = getExtraFilterConfigs();
+  var keys = [fc.key];
+  extra.forEach(function(e) { keys.push(e.key); });
+  keys.push('version', 'month');
+  return keys;
+}
+function getUniqueExtraFilterValues(fc) {
+  var field = fc.field;
+  var vals = new Set();
+  state.projects.forEach(function(p) { if (p[field]) vals.add(p[field]); });
+  state.versions.forEach(function(v) {
+    if (v.data) v.data.forEach(function(p) { if (p[field]) vals.add(p[field]); });
+  });
+  return Array.from(vals).sort();
+}
+function getBasicDisplayFields() {
+  // Return basic fields excluding projectName (shown as sticky column)
+  return getBasicFields().filter(function(f) { return f.key !== 'projectName'; });
+}
 
 // ===== State =====
 let state = {
-  currentNav: 'tos',
+  currentNav: 'device',
   currentTab: 'overview',
   projects: [],
   versions: [],
   editingProjectId: null,
-  filters: { dept: [], version: [], month: [] },
+  filters: { brand: [], secondaryDept: [], version: [], month: [] },
   selectedIds: [],
 };
 
@@ -365,14 +458,20 @@ function getStorageKey(suffix) {
 }
 
 function loadData() {
+  rebuildHeaderMap();
   const raw = localStorage.getItem(getStorageKey('projects'));
   state.projects = raw ? JSON.parse(raw) : [];
   const vRaw = localStorage.getItem(getStorageKey('versions'));
   state.versions = vRaw ? JSON.parse(vRaw) : [];
   // Load sample data if empty for first time
-  if (state.projects.length === 0 && state.currentNav === 'tos' && !localStorage.getItem('costAlloc_initialized')) {
+  if (state.projects.length === 0 && state.currentNav === 'tos' && !localStorage.getItem('costAlloc_initialized_tos')) {
     state.projects = getSampleData();
-    localStorage.setItem('costAlloc_initialized', 'true');
+    localStorage.setItem('costAlloc_initialized_tos', 'true');
+    saveData();
+  }
+  if (state.projects.length === 0 && state.currentNav === 'device' && !localStorage.getItem('costAlloc_initialized_device')) {
+    state.projects = getDeviceSampleData();
+    localStorage.setItem('costAlloc_initialized_device', 'true');
     saveData();
   }
 }
@@ -452,10 +551,20 @@ function showToast(message, type) {
 function calculateMonthlyData(project) {
   const result = {};
 
-  STAGES.forEach(function(stage) {
+  getStages().forEach(function(stage) {
     const estimate = parseFloat(project[stage.estimateField]) || 0;
     const startDateStr = project[stage.startField];
-    const endDateStr = project[stage.endField];
+    var endDateStr = project[stage.endField];
+
+    // Special case: STR5+6个月 — end date = str5Date + 180 days
+    if (stage.key === 'str5Plus6m') {
+      var str5 = parseDate(project.str5Date);
+      if (str5) {
+        var computed = new Date(str5);
+        computed.setDate(computed.getDate() + 179); // +1 day from formula, so 180 days total
+        endDateStr = formatDateStr(computed);
+      }
+    }
 
     if (!estimate || !startDateStr || !endDateStr) return;
 
@@ -506,14 +615,35 @@ function getAllMonths(projects) {
   return Array.from(months).sort();
 }
 
+function getYearlyTotals(projects) {
+  var yearData = {};
+  projects.forEach(function(p) {
+    var mData = calculateMonthlyData(p);
+    Object.keys(mData).forEach(function(monthKey) {
+      var year = monthKey.split('-')[0];
+      if (!yearData[year]) yearData[year] = {total: 0, months: {}};
+      yearData[year].total += mData[monthKey].total;
+      yearData[year].months[monthKey] = true;
+    });
+  });
+  return Object.keys(yearData).sort().map(function(year) {
+    return {
+      year: year,
+      total: yearData[year].total,
+      monthCount: Object.keys(yearData[year].months).length
+    };
+  });
+}
+
 function getTotalEstimate(project) {
-  return STAGES.reduce(function(sum, s) {
+  return getStages().reduce(function(sum, s) {
     return sum + (parseFloat(project[s.estimateField]) || 0);
   }, 0);
 }
 
 // ===== Filters (multi-select) =====
 function getFilteredProjects() {
+  var fc = getFilterConfig();
   let projects = state.projects;
   if (state.filters.version && state.filters.version.length > 0) {
     let merged = [];
@@ -523,9 +653,15 @@ function getFilteredProjects() {
     });
     if (merged.length > 0) projects = merged;
   }
-  if (state.filters.dept && state.filters.dept.length > 0) {
-    projects = projects.filter(function(p) { return state.filters.dept.indexOf(p.primaryDept) !== -1; });
+  if (state.filters[fc.key] && state.filters[fc.key].length > 0) {
+    projects = projects.filter(function(p) { return state.filters[fc.key].indexOf(p[fc.field]) !== -1; });
   }
+  // Extra filters (e.g., secondaryDept for device)
+  getExtraFilterConfigs().forEach(function(efc) {
+    if (state.filters[efc.key] && state.filters[efc.key].length > 0) {
+      projects = projects.filter(function(p) { return state.filters[efc.key].indexOf(p[efc.field]) !== -1; });
+    }
+  });
   if (state.filters.month && state.filters.month.length > 0) {
     projects = projects.filter(function(p) {
       const mData = calculateMonthlyData(p);
@@ -536,10 +672,12 @@ function getFilteredProjects() {
 }
 
 function getUniqueDepts() {
+  var fc = getFilterConfig();
+  var field = fc.field;
   const depts = new Set();
-  state.projects.forEach(function(p) { if (p.primaryDept) depts.add(p.primaryDept); });
+  state.projects.forEach(function(p) { if (p[field]) depts.add(p[field]); });
   state.versions.forEach(function(v) {
-    if (v.data) v.data.forEach(function(p) { if (p.primaryDept) depts.add(p.primaryDept); });
+    if (v.data) v.data.forEach(function(p) { if (p[field]) depts.add(p[field]); });
   });
   return Array.from(depts).sort();
 }
@@ -553,9 +691,18 @@ function toggleFilter(key, value) {
 }
 
 function selectAllFilter(key) {
-  if (key === 'dept') state.filters[key] = getUniqueDepts();
-  else if (key === 'version') state.filters[key] = state.versions.map(function(v) { return v.id; });
-  else if (key === 'month') state.filters[key] = getAllMonths(state.projects);
+  var fc = getFilterConfig();
+  if (key === fc.key) state.filters[key] = getUniqueDepts();
+  else {
+    var matched = false;
+    getExtraFilterConfigs().forEach(function(efc) {
+      if (key === efc.key) { state.filters[key] = getUniqueExtraFilterValues(efc); matched = true; }
+    });
+    if (!matched) {
+      if (key === 'version') state.filters[key] = state.versions.map(function(v) { return v.id; });
+      else if (key === 'month') state.filters[key] = getAllMonths(state.projects);
+    }
+  }
   renderDataArea();
 }
 
@@ -603,7 +750,8 @@ function clearSelection() {
 }
 
 function toggleDropdown(key) {
-  ['dept','version','month'].forEach(function(k) {
+  var allKeys = getAllFilterKeys();
+  allKeys.forEach(function(k) {
     if (k !== key) {
       const m = document.getElementById('ms-menu-' + k);
       if (m) m.classList.remove('open');
@@ -614,31 +762,63 @@ function toggleDropdown(key) {
 }
 
 function resetFilters() {
-  state.filters = { dept: [], version: [], month: [] };
+  var fc = getFilterConfig();
+  state.filters = {};
+  state.filters[fc.key] = [];
+  getExtraFilterConfigs().forEach(function(efc) { state.filters[efc.key] = []; });
+  state.filters.version = [];
+  state.filters.month = [];
   renderMain();
 }
 
 function renderFilterBar() {
+  var fc = getFilterConfig();
   var depts = getUniqueDepts();
   var months = getAllMonths(state.projects);
+  var filterKey = fc.key;
+  var filterLabel = fc.label;
+  var filterIcon = fc.icon || '';
+  var filterValues = state.filters[filterKey] || [];
   var html = '<div class="filter-bar">';
-  // Dept dropdown
+  // Dynamic filter dropdown (dept for tOS, brand for device)
   html += '<div class="ms-dropdown">';
-  html += '<div class="ms-trigger" onclick="event.stopPropagation();toggleDropdown(\'dept\')">';
-  html += '<span>&#127970; 部门</span>';
-  html += '<span class="ms-count" id="ms-count-dept"' + (state.filters.dept.length ? '' : ' style="display:none"') + '>' + state.filters.dept.length + '</span>';
+  html += '<div class="ms-trigger" onclick="event.stopPropagation();toggleDropdown(\'' + filterKey + '\')">';
+  html += '<span>' + filterIcon + ' ' + filterLabel + '</span>';
+  html += '<span class="ms-count" id="ms-count-' + filterKey + '"' + (filterValues.length ? '' : ' style="display:none"') + '>' + filterValues.length + '</span>';
   html += '<span class="ms-caret">&#9662;</span></div>';
-  html += '<div class="ms-menu" id="ms-menu-dept">';
+  html += '<div class="ms-menu" id="ms-menu-' + filterKey + '">';
   if (depts.length > 0) {
-    html += '<div class="ms-select-all"><span onclick="selectAllFilter(\'dept\')">全选</span><span class="ms-clear" onclick="clearFilter(\'dept\')">清空</span></div>';
+    html += '<div class="ms-select-all"><span onclick="selectAllFilter(\'' + filterKey + '\')">全选</span><span class="ms-clear" onclick="clearFilter(\'' + filterKey + '\')">清空</span></div>';
     depts.forEach(function(d) {
-      var ck = state.filters.dept.indexOf(d) !== -1 ? ' checked' : '';
-      html += '<label class="ms-option" onclick="event.stopPropagation()"><input type="checkbox" value="' + d + '"' + ck + ' onchange="toggleFilter(\'dept\',this.value)">' + d + '</label>';
+      var ck = filterValues.indexOf(d) !== -1 ? ' checked' : '';
+      html += '<label class="ms-option" onclick="event.stopPropagation()"><input type="checkbox" value="' + d + '"' + ck + ' onchange="toggleFilter(\'' + filterKey + '\',this.value)">' + d + '</label>';
     });
   } else {
-    html += '<div style="padding:8px 12px;color:#999;font-size:12px">暂无部门数据</div>';
+    html += '<div style="padding:8px 12px;color:#999;font-size:12px">暂无' + filterLabel + '数据</div>';
   }
   html += '</div></div>';
+  // Extra filter dropdowns (e.g., secondaryDept for device)
+  getExtraFilterConfigs().forEach(function(efc) {
+    var extraValues = getUniqueExtraFilterValues(efc);
+    var extraSelected = state.filters[efc.key] || [];
+    var extraIcon = efc.icon || '';
+    html += '<div class="ms-dropdown">';
+    html += '<div class="ms-trigger" onclick="event.stopPropagation();toggleDropdown(\'' + efc.key + '\')">';
+    html += '<span>' + extraIcon + ' ' + efc.label + '</span>';
+    html += '<span class="ms-count" id="ms-count-' + efc.key + '"' + (extraSelected.length ? '' : ' style="display:none"') + '>' + extraSelected.length + '</span>';
+    html += '<span class="ms-caret">&#9662;</span></div>';
+    html += '<div class="ms-menu" id="ms-menu-' + efc.key + '">';
+    if (extraValues.length > 0) {
+      html += '<div class="ms-select-all"><span onclick="selectAllFilter(\'' + efc.key + '\')">全选</span><span class="ms-clear" onclick="clearFilter(\'' + efc.key + '\')">清空</span></div>';
+      extraValues.forEach(function(d) {
+        var ck = extraSelected.indexOf(d) !== -1 ? ' checked' : '';
+        html += '<label class="ms-option" onclick="event.stopPropagation()"><input type="checkbox" value="' + d + '"' + ck + ' onchange="toggleFilter(\'' + efc.key + '\',this.value)">' + d + '</label>';
+      });
+    } else {
+      html += '<div style="padding:8px 12px;color:#999;font-size:12px">暂无' + efc.label + '数据</div>';
+    }
+    html += '</div></div>';
+  });
   // Version dropdown
   html += '<div class="ms-dropdown">';
   html += '<div class="ms-trigger" onclick="event.stopPropagation();toggleDropdown(\'version\')">';
@@ -674,7 +854,11 @@ function renderFilterBar() {
   }
   html += '</div></div>';
   // Reset button
-  if (state.filters.dept.length || state.filters.version.length || state.filters.month.length) {
+  var hasFilter = (state.filters[filterKey] && state.filters[filterKey].length) || state.filters.version.length || state.filters.month.length;
+  getExtraFilterConfigs().forEach(function(efc) {
+    if (state.filters[efc.key] && state.filters[efc.key].length) hasFilter = true;
+  });
+  if (hasFilter) {
     html += '<button class="btn btn-sm" onclick="resetFilters()">重置筛选</button>';
   }
   html += '</div>';
@@ -682,10 +866,11 @@ function renderFilterBar() {
 }
 
 function updateFilterCounts() {
-  ['dept','version','month'].forEach(function(k) {
+  var keys = getAllFilterKeys();
+  keys.forEach(function(k) {
     var el = document.getElementById('ms-count-' + k);
     if (el) {
-      var n = state.filters[k].length;
+      var n = (state.filters[k] || []).length;
       el.textContent = n;
       el.style.display = n > 0 ? '' : 'none';
     }
@@ -706,6 +891,22 @@ function renderDataArea() {
   html += '<div class="summary-card"><div class="label">时间范围</div><div class="value" style="font-size:14px">' + monthRange + '</div></div>';
   html += '<div class="summary-card"><div class="label">历史版本</div><div class="value">' + state.versions.length + '<span class="unit">个</span></div></div>';
   html += '</div>';
+  // Year-based metric cards (monthly tab only)
+  if (state.currentTab === 'monthly') {
+    var yearTotals = getYearlyTotals(filteredProjects);
+    if (yearTotals.length > 0) {
+      html += '<div class="year-cards">';
+      yearTotals.forEach(function(yt, idx) {
+        var colorClass = 'year-card-' + (idx % 6);
+        html += '<div class="year-card ' + colorClass + '">';
+        html += '<div class="year-label">' + yt.year + '年</div>';
+        html += '<div class="year-value">' + formatMoney(yt.total) + '<span class="year-unit">人月</span></div>';
+        html += '<div class="year-months">覆盖 ' + yt.monthCount + ' 个月</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+  }
   html += '<div class="toolbar">';
   html += '<button class="btn btn-primary" onclick="openEntryModal()">&#10133; 手动录入</button>';
   html += '<button class="btn" onclick="openImportModal()">&#11015; 导入数据</button>';
@@ -731,6 +932,10 @@ function renderDataArea() {
     html += renderOverviewTable(filteredProjects);
   } else {
     html += renderMonthlyTable(filteredProjects);
+    // Department breakdown table (device only, when secondaryDept data exists)
+    if (state.currentNav === 'device') {
+      html += renderDeptMonthlyTable(filteredProjects);
+    }
   }
   area.innerHTML = html;
   updateFilterCounts();
@@ -755,7 +960,7 @@ function renderNav() {
 function renderMain() {
   const body = document.getElementById('mainBody');
 
-  if (state.currentNav !== 'tos') {
+  if (state.currentNav !== 'tos' && state.currentNav !== 'device') {
     body.innerHTML = '<div class="coming-soon"><div class="icon">&#128640;</div><h3>' + (NAV_TITLES[state.currentNav] || '') + '</h3><p>该模块正在建设中，敬请期待...</p></div>';
     return;
   }
@@ -776,29 +981,30 @@ function renderOverviewTable(projects) {
     return '<div class="empty-state"><div class="icon">&#128466;</div><p>暂无项目数据，请点击「手动录入」或「导入数据」添加</p></div>';
   }
 
+  var stages = getStages();
+  var basicFields = getBasicDisplayFields();
+  var dateFields = getDateFields();
   let html = '<div class="table-wrapper"><table><thead><tr>';
   // Checkbox column header (select-all)
   var allSelected = projects.length > 0 && projects.every(function(p) { return state.selectedIds.indexOf(p.id) !== -1; });
   html += '<th style="width:40px;text-align:center"><input type="checkbox" ' + (allSelected ? 'checked' : '') + ' onchange="toggleSelectAll()" style="cursor:pointer" /></th>';
   html += '<th style="min-width:120px">操作</th>';
   html += '<th class="col-sticky" style="min-width:160px">项目名称</th>';
-  html += '<th style="min-width:100px">一级部门</th>';
-  html += '<th style="min-width:100px">二级部门</th>';
+  // Basic info columns (dynamic)
+  basicFields.forEach(function(f) {
+    html += '<th style="min-width:100px">' + f.label + '</th>';
+  });
   // Estimate columns
-  STAGES.forEach(function(s) {
+  stages.forEach(function(s) {
     html += '<th class="text-right" style="min-width:140px">' + s.name + '预估投入</th>';
   });
   html += '<th class="text-right" style="min-width:120px">预估投入合计</th>';
-  // Date columns
-  html += '<th style="min-width:110px">规划KO日期</th>';
-  html += '<th style="min-width:110px">Charter启动</th>';
-  html += '<th style="min-width:100px">STR1日期</th>';
-  html += '<th style="min-width:100px">STR3日期</th>';
-  html += '<th style="min-width:100px">STR5日期</th>';
-  html += '<th style="min-width:100px">MR日期</th>';
-  html += '<th style="min-width:110px">维护期结束</th>';
+  // Date columns (dynamic)
+  dateFields.forEach(function(f) {
+    html += '<th style="min-width:110px">' + f.label + '</th>';
+  });
   // Duration columns
-  STAGES.forEach(function(s) {
+  stages.forEach(function(s) {
     html += '<th class="text-right" style="min-width:100px">' + s.name + '工期</th>';
   });
   html += '</tr></thead><tbody>';
@@ -812,20 +1018,19 @@ function renderOverviewTable(projects) {
     html += '<button class="btn-link" style="color:#ff4d4f" onclick="deleteProject(\'' + p.id + '\')">删除</button>';
     html += '</td>';
     html += '<td class="col-sticky">' + (p.projectName || '') + '</td>';
-    html += '<td>' + (p.primaryDept || '') + '</td>';
-    html += '<td>' + (p.secondaryDept || '') + '</td>';
-    STAGES.forEach(function(s) {
+    // Basic info values (dynamic)
+    basicFields.forEach(function(f) {
+      html += '<td>' + (p[f.key] || '') + '</td>';
+    });
+    stages.forEach(function(s) {
       html += '<td class="text-right">' + formatMoney(p[s.estimateField]) + '</td>';
     });
     html += '<td class="text-right" style="font-weight:600;color:#1890ff">' + formatMoney(getTotalEstimate(p)) + '</td>';
-    html += '<td class="text-center">' + formatDate(p.planningKODate) + '</td>';
-    html += '<td class="text-center">' + formatDate(p.charterStartDate) + '</td>';
-    html += '<td class="text-center">' + formatDate(p.str1Date) + '</td>';
-    html += '<td class="text-center">' + formatDate(p.str3Date) + '</td>';
-    html += '<td class="text-center">' + formatDate(p.str5Date) + '</td>';
-    html += '<td class="text-center">' + formatDate(p.mrDate) + '</td>';
-    html += '<td class="text-center">' + formatDate(p.maintenanceEndDate) + '</td>';
-    STAGES.forEach(function(s) {
+    // Date values (dynamic)
+    dateFields.forEach(function(f) {
+      html += '<td class="text-center">' + formatDate(p[f.key]) + '</td>';
+    });
+    stages.forEach(function(s) {
       html += '<td class="text-right">' + (p[s.durationField] || '-') + '</td>';
     });
     html += '</tr>';
@@ -837,13 +1042,15 @@ function renderOverviewTable(projects) {
   html += '<td></td>';
   html += '<td></td>';
   html += '<td class="col-sticky">合计</td>';
-  html += '<td></td><td></td>';
-  STAGES.forEach(function(s) {
+  // Empty basic cells
+  for (var i = 0; i < basicFields.length; i++) html += '<td></td>';
+  stages.forEach(function(s) {
     const sum = projects.reduce(function(sum, p) { return sum + (parseFloat(p[s.estimateField]) || 0); }, 0);
     html += '<td class="text-right">' + formatMoney(sum) + '</td>';
   });
   html += '<td class="text-right" style="color:#1890ff">' + formatMoney(grandTotalEst) + '</td>';
-  html += '<td colspan="13"></td>';
+  // Empty date and duration cells
+  html += '<td colspan="' + (dateFields.length + stages.length) + '"></td>';
   html += '</tr>';
 
   html += '</tbody></table></div>';
@@ -869,11 +1076,13 @@ function renderMonthlyTable(projects) {
     projectMonthly[p.id] = calculateMonthlyData(p);
   });
 
+  var basicFields = getBasicDisplayFields();
   let html = '<div class="table-wrapper"><table><thead><tr>';
   html += '<th style="min-width:80px">操作</th>';
   html += '<th class="col-sticky" style="min-width:180px">项目名称</th>';
-  html += '<th style="min-width:90px">一级部门</th>';
-  html += '<th style="min-width:90px">二级部门</th>';
+  basicFields.forEach(function(f) {
+    html += '<th style="min-width:90px">' + f.label + '</th>';
+  });
   displayMonths.forEach(function(m) {
     html += '<th class="text-right" style="min-width:110px">' + m + '</th>';
   });
@@ -889,8 +1098,9 @@ function renderMonthlyTable(projects) {
     html += '<tr>';
     html += '<td class="text-center"><button class="btn-link" onclick="openDetailModal(\'' + p.id + '\')">详情</button></td>';
     html += '<td class="col-sticky">' + (p.projectName || '') + '</td>';
-    html += '<td>' + (p.primaryDept || '') + '</td>';
-    html += '<td>' + (p.secondaryDept || '') + '</td>';
+    basicFields.forEach(function(f) {
+      html += '<td>' + (p[f.key] || '') + '</td>';
+    });
 
     displayMonths.forEach(function(m) {
       const val = mData[m] ? mData[m].total : 0;
@@ -908,7 +1118,7 @@ function renderMonthlyTable(projects) {
   html += '<tr class="summary-row">';
   html += '<td></td>';
   html += '<td class="col-sticky">月度合计</td>';
-  html += '<td></td><td></td>';
+  for (var i = 0; i < basicFields.length; i++) html += '<td></td>';
   let grandTotal = 0;
   displayMonths.forEach(function(m) {
     const val = monthlyTotals[m] || 0;
@@ -922,25 +1132,114 @@ function renderMonthlyTable(projects) {
   return html;
 }
 
+function renderDeptMonthlyTable(projects) {
+  if (!projects || projects.length === 0) return '';
+
+  // Check if any project has secondaryDept
+  var hasDept = projects.some(function(p) { return p.secondaryDept; });
+  if (!hasDept) return '';
+
+  var allMonths = getAllMonths(projects);
+  if (allMonths.length === 0) return '';
+
+  var displayMonths = (state.filters.month && state.filters.month.length > 0) ? allMonths.filter(function(m) { return state.filters.month.indexOf(m) !== -1; }) : allMonths;
+
+  // Group projects by secondaryDept
+  var deptGroups = {};
+  projects.forEach(function(p) {
+    var dept = p.secondaryDept || '(未分配)';
+    if (!deptGroups[dept]) deptGroups[dept] = [];
+    deptGroups[dept].push(p);
+  });
+
+  var deptNames = Object.keys(deptGroups).sort();
+
+  // Calculate monthly totals per department
+  var deptMonthly = {};
+  var grandTotals = {};
+  deptNames.forEach(function(dept) {
+    deptMonthly[dept] = {};
+    deptGroups[dept].forEach(function(p) {
+      var mData = calculateMonthlyData(p);
+      Object.keys(mData).forEach(function(monthKey) {
+        if (!deptMonthly[dept][monthKey]) deptMonthly[dept][monthKey] = 0;
+        deptMonthly[dept][monthKey] += mData[monthKey].total;
+        if (!grandTotals[monthKey]) grandTotals[monthKey] = 0;
+        grandTotals[monthKey] += mData[monthKey].total;
+      });
+    });
+  });
+
+  var html = '<div style="margin-top:20px">';
+  html += '<div style="font-size:14px;font-weight:600;color:#262626;margin-bottom:10px;padding-left:4px">二级部门月度预估投入拆分</div>';
+  html += '<div class="table-wrapper"><table><thead><tr>';
+  html += '<th class="col-sticky" style="min-width:160px">二级部门</th>';
+  html += '<th class="text-right" style="min-width:80px">项目数</th>';
+  displayMonths.forEach(function(m) {
+    html += '<th class="text-right" style="min-width:110px">' + m + '</th>';
+  });
+  html += '<th class="text-right" style="min-width:120px">合计</th>';
+  html += '</tr></thead><tbody>';
+
+  deptNames.forEach(function(dept) {
+    var deptTotal = 0;
+    html += '<tr>';
+    html += '<td class="col-sticky" style="font-weight:500">' + dept + '</td>';
+    html += '<td class="text-right">' + deptGroups[dept].length + '</td>';
+    displayMonths.forEach(function(m) {
+      var val = deptMonthly[dept][m] || 0;
+      deptTotal += val;
+      html += '<td class="text-right">' + (val > 0 ? formatMoney(val) : '-') + '</td>';
+    });
+    html += '<td class="text-right" style="font-weight:600;color:#1890ff">' + formatMoney(deptTotal) + '</td>';
+    html += '</tr>';
+  });
+
+  // Grand total row
+  var grandTotal = 0;
+  html += '<tr class="summary-row">';
+  html += '<td class="col-sticky">合计</td>';
+  html += '<td class="text-right">' + projects.length + '</td>';
+  displayMonths.forEach(function(m) {
+    var val = grandTotals[m] || 0;
+    grandTotal += val;
+    html += '<td class="text-right">' + formatMoney(val) + '</td>';
+  });
+  html += '<td class="text-right" style="color:#1890ff">' + formatMoney(grandTotal) + '</td>';
+  html += '</tr>';
+
+  html += '</tbody></table></div>';
+  html += '</div>';
+  return html;
+}
+
 // ===== Form =====
 function renderFormFields() {
+  // Basic fields
+  var basicHtml = '';
+  getBasicFields().forEach(function(f) {
+    var req = (f.key === 'projectName') ? ' <span class="req">*</span>' : '';
+    basicHtml += '<div class="form-item"><label>' + f.label + req + '</label><input type="text" id="f_' + f.key + '"' + (f.key === 'projectName' ? ' required' : '') + '></div>';
+  });
+  document.getElementById('basicFields').innerHTML = basicHtml;
+
   // Estimate fields
   let estimateHtml = '';
-  FIELDS.filter(function(f) { return f.group === 'estimate'; }).forEach(function(f) {
+  getEstimateFields().forEach(function(f) {
     estimateHtml += '<div class="form-item"><label>' + f.label + '</label><div class="input-group"><input type="number" id="f_' + f.key + '" step="0.01"><span class="suffix">人月</span></div></div>';
   });
   document.getElementById('estimateFields').innerHTML = estimateHtml;
 
   // Date fields
   let dateHtml = '';
-  FIELDS.filter(function(f) { return f.group === 'date'; }).forEach(function(f) {
+  getDateFields().forEach(function(f) {
     dateHtml += '<div class="form-item"><label>' + f.label + '</label><input type="date" id="f_' + f.key + '"></div>';
   });
   document.getElementById('dateFields').innerHTML = dateHtml;
 
   // Duration fields
   let durationHtml = '';
-  FIELDS.filter(function(f) { return f.group === 'duration'; }).forEach(function(f) {
+  getDurationFields().forEach(function(f) {
     durationHtml += '<div class="form-item"><label>' + f.label + '</label><div class="input-group"><input type="number" id="f_' + f.key + '" step="1" min="0"><span class="suffix">天</span></div></div>';
   });
   document.getElementById('durationFields').innerHTML = durationHtml;
@@ -954,14 +1253,14 @@ function openEntryModal(projectId) {
     document.getElementById('entryModalTitle').textContent = '编辑项目预估数据';
     const p = state.projects.find(function(x) { return x.id === projectId; });
     if (p) {
-      FIELDS.forEach(function(f) {
+      getFields().forEach(function(f) {
         const el = document.getElementById('f_' + f.key);
         if (el) el.value = p[f.key] || '';
       });
     }
   } else {
     document.getElementById('entryModalTitle').textContent = '录入项目预估数据';
-    FIELDS.forEach(function(f) {
+    getFields().forEach(function(f) {
       const el = document.getElementById('f_' + f.key);
       if (el) el.value = '';
     });
@@ -978,19 +1277,21 @@ function closeEntryModal() {
 function saveProjectFromForm() {
   const data = {};
   let hasError = false;
+  let missingField = '';
 
-  FIELDS.forEach(function(f) {
+  getFields().forEach(function(f) {
     const el = document.getElementById('f_' + f.key);
     if (el) {
       data[f.key] = el.value.trim();
-      if ((f.key === 'projectName' || f.key === 'primaryDept') && !data[f.key]) {
+      if (f.key === 'projectName' && !data[f.key]) {
         hasError = true;
+        missingField = '项目名称';
       }
     }
   });
 
   if (hasError) {
-    showToast('请填写必填字段（项目名称、一级部门）', 'error');
+    showToast('请填写必填字段：' + missingField, 'error');
     return;
   }
 
@@ -1143,10 +1444,11 @@ function parseCSV(text) {
 }
 
 function buildExportHeaders() {
+  var lastEstKey = getLastEstimateKey();
   const headers = [];
-  FIELDS.forEach(function(f) {
+  getFields().forEach(function(f) {
     headers.push(f.label);
-    if (f.key === 'maintenanceEstimate') {
+    if (f.key === lastEstKey) {
       headers.push('预估投入合计');
     }
   });
@@ -1154,33 +1456,103 @@ function buildExportHeaders() {
 }
 
 function buildExportRow(p) {
+  var lastEstKey = getLastEstimateKey();
   const row = [];
-  FIELDS.forEach(function(f) {
+  getFields().forEach(function(f) {
     row.push(p[f.key] || '');
-    if (f.key === 'maintenanceEstimate') {
+    if (f.key === lastEstKey) {
       row.push(getTotalEstimate(p));
     }
   });
   return row;
 }
 
-function downloadTemplate() {
-  const headers = buildExportHeaders();
-  const sampleRow = buildExportRow({
-    projectName: 'tOS 17.0 数据看板', primaryDept: '研发部', secondaryDept: '平台开发组',
-    planningEstimate: '500000', conceptEstimate: '800000', planEstimate: '1200000',
-    devVerifyEstimate: '3500000', launchEstimate: '600000', maintenanceEstimate: '900000',
-    planningKODate: '2025-01-15', charterStartDate: '2025-02-01', str1Date: '2025-03-15',
-    str3Date: '2025-06-01', str5Date: '2025-09-15', mrDate: '2025-11-01', maintenanceEndDate: '2026-11-01',
-    planningDuration: '17', conceptDuration: '42', planDuration: '78',
-    devVerifyDuration: '106', launchDuration: '47', maintenanceDuration: '365'
+function downloadXlsxWithHiddenComments(wb, fileName) {
+  var xlsxBin = XLSX.write(wb, {type: 'array', bookType: 'xlsx'});
+  JSZip.loadAsync(xlsxBin).then(function(zip) {
+    var promises = [];
+    zip.forEach(function(path, file) {
+      if (/\.vml$/i.test(path) && !file.dir) {
+        promises.push(file.async('string').then(function(content) {
+          content = content.replace(/visibility\s*:\s*visible/gi, 'visibility:hidden');
+          content = content.replace(/(<v:shape\b[^>]*?style="[^"]*?)(["'])/gi, function(m, before, q) {
+            return /visibility\s*:/i.test(before) ? m : (before + ';visibility:hidden' + q);
+          });
+          zip.file(path, content);
+        }));
+      }
+    });
+    return Promise.all(promises).then(function() {
+      return zip.generateAsync({type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    });
+  }).then(function(blob) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }).catch(function(err) {
+    console.error('XLSX comment visibility error:', err);
+    XLSX.writeFile(wb, fileName);
   });
+}
 
-  const ws = XLSX.utils.aoa_to_sheet([headers, sampleRow]);
-  ws['!cols'] = headers.map(function() { return {wch: 18}; });
+function downloadTemplate() {
+  var lastEstKey = getLastEstimateKey();
+  var dateColumns = [];
+  var templateHeaders = [];
+  getFields().forEach(function(f) {
+    var label = f.label;
+    if (f.type === 'date') {
+      label = label.replace(/\(日期\)/g, '').replace(/（日期）/g, '');
+      dateColumns.push(templateHeaders.length);
+    }
+    templateHeaders.push(label);
+    if (f.key === lastEstKey) {
+      templateHeaders.push('预估投入合计');
+    }
+  });
+  var sampleData;
+  if (state.currentNav === 'device') {
+    sampleData = {
+      projectName: '整机产品A', marketName: '国内市场', brand: '品牌X', productLine: '产品线1', projectLevel: 'P1', levelCoefficient: '1.0', secondaryDept: '整机研发一部',
+      conceptToStr1Estimate: '50', str1ToStr3Estimate: '200',
+      str3ToStr4Estimate: '350', str4ToStr4aEstimate: '30', str4aToStr5Estimate: '60', str5Plus6mEstimate: '90',
+      conceptStartDate: '2025-01-15', str1Date: '2025-03-15',
+      str3Date: '2025-07-01', str4Date: '2025-09-15', str4aDate: '2025-10-15', str5Date: '2025-11-01', str5Plus6mDate: '2026-05-01',
+      conceptToStr1Duration: '60', str1ToStr3Duration: '108',
+      str3ToStr4Duration: '76', str4ToStr4aDuration: '30', str4aToStr5Duration: '17', str5Plus6mDuration: '180'
+    };
+  } else {
+    sampleData = {
+      projectName: 'tOS 17.0 数据看板', primaryDept: '研发部', secondaryDept: '平台开发组',
+      planningEstimate: '500000', conceptEstimate: '800000', planEstimate: '1200000',
+      devVerifyEstimate: '3500000', launchEstimate: '600000', maintenanceEstimate: '900000',
+      planningKODate: '2025-01-15', charterStartDate: '2025-02-01', str1Date: '2025-03-15',
+      str3Date: '2025-06-01', str5Date: '2025-09-15', mrDate: '2025-11-01', maintenanceEndDate: '2026-11-01',
+      planningDuration: '17', conceptDuration: '42', planDuration: '78',
+      devVerifyDuration: '106', launchDuration: '47', maintenanceDuration: '365'
+    };
+  }
+  const sampleRow = buildExportRow(sampleData);
+
+  var sheetName = state.currentNav === 'device' ? '整机产品项目预估数据模板' : 'tOS项目预估数据模板';
+  var fileName = state.currentNav === 'device' ? '整机产品项目预估数据导入模板.xlsx' : 'tOS项目预估数据导入模板.xlsx';
+  const ws = XLSX.utils.aoa_to_sheet([templateHeaders, sampleRow]);
+  ws['!cols'] = templateHeaders.map(function() { return {wch: 18}; });
+  // Add cell comments to date columns to remind date format
+  dateColumns.forEach(function(col) {
+    var cellRef = XLSX.utils.encode_cell({r: 0, c: col});
+    if (ws[cellRef]) {
+      ws[cellRef].c = [{a: '系统提示', t: '请填写日期格式，例如：2025-01-15'}];
+    }
+  });
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '项目预估数据模板');
-  XLSX.writeFile(wb, '项目预估数据导入模板.xlsx');
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  downloadXlsxWithHiddenComments(wb, fileName);
   showToast('模板已下载', 'success');
 }
 
@@ -1200,7 +1572,8 @@ function exportData() {
   ws['!cols'] = headers.map(function() { return {wch: 18}; });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '项目预估数据');
-  const fileName = state.currentNav + '_项目预估数据_' + formatDateStr(new Date()) + '.xlsx';
+  var navLabel = state.currentNav === 'device' ? '整机产品项目' : 'tOS项目';
+  const fileName = navLabel + '_预估数据_' + formatDateStr(new Date()) + '.xlsx';
   XLSX.writeFile(wb, fileName);
   showToast('数据已导出', 'success');
 }
@@ -1222,8 +1595,10 @@ function exportMonthlyData() {
     ? allMonths.filter(function(m) { return state.filters.month.indexOf(m) !== -1; })
     : allMonths;
 
+  var basicFields = getBasicDisplayFields();
   // Build headers
-  var headers = ['项目名称', '一级部门', '二级部门'];
+  var headers = ['项目名称'];
+  basicFields.forEach(function(f) { headers.push(f.label); });
   displayMonths.forEach(function(m) { headers.push(m); });
   headers.push('合计');
 
@@ -1232,7 +1607,8 @@ function exportMonthlyData() {
 
   projects.forEach(function(p) {
     var mData = calculateMonthlyData(p);
-    var row = [p.projectName || '', p.primaryDept || '', p.secondaryDept || ''];
+    var row = [p.projectName || ''];
+    basicFields.forEach(function(f) { row.push(p[f.key] || ''); });
     var rowTotal = 0;
     displayMonths.forEach(function(m) {
       var val = mData[m] ? mData[m].total : 0;
@@ -1246,7 +1622,8 @@ function exportMonthlyData() {
   });
 
   // Summary row
-  var summaryRow = ['月度合计', '', ''];
+  var summaryRow = ['月度合计'];
+  for (var i = 0; i < basicFields.length; i++) summaryRow.push('');
   var grandTotal = 0;
   displayMonths.forEach(function(m) {
     var val = monthlyTotals[m] || 0;
@@ -1257,7 +1634,7 @@ function exportMonthlyData() {
   data.push(summaryRow);
 
   var ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = headers.map(function(h, i) { return {wch: i < 3 ? 18 : 12}; });
+  ws['!cols'] = headers.map(function(h, i) { return {wch: i <= basicFields.length ? 18 : 12}; });
   var wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '月度拆分数据');
   var fileName = '项目月度预估数据_' + formatDateStr(new Date()) + '.xlsx';
@@ -1357,13 +1734,16 @@ function openDetailModal(projectId) {
   const p = state.projects.find(function(x) { return x.id === projectId; });
   if (!p) return;
 
+  var stages = getStages();
+  var basicFields = getBasicDisplayFields();
   const mData = calculateMonthlyData(p);
   const months = Object.keys(mData).sort();
   const body = document.getElementById('detailModalBody');
 
   let html = '<div style="margin-bottom:16px">';
   html += '<h3 style="font-size:16px;margin-bottom:8px">' + (p.projectName || '') + '</h3>';
-  html += '<p style="color:#8c8c8c;font-size:13px">' + (p.primaryDept || '') + ' / ' + (p.secondaryDept || '') + '</p>';
+  var basicInfo = basicFields.map(function(f) { return p[f.key] || ''; }).filter(function(v) { return v; }).join(' / ');
+  html += '<p style="color:#8c8c8c;font-size:13px">' + basicInfo + '</p>';
   html += '<p style="color:#1890ff;font-size:14px;margin-top:4px">预估投入合计：' + formatMoney(getTotalEstimate(p)) + ' 人月</p>';
   html += '</div>';
 
@@ -1378,7 +1758,7 @@ function openDetailModal(projectId) {
     html += '<th class="text-right" style="min-width:120px">阶段合计</th>';
     html += '</tr></thead><tbody>';
 
-    STAGES.forEach(function(stage) {
+    stages.forEach(function(stage) {
       const stageTotal = (parseFloat(p[stage.estimateField]) || 0);
       html += '<tr>';
       html += '<td>' + stage.name + '</td>';
@@ -1411,10 +1791,18 @@ function openDetailModal(projectId) {
     html += '<strong>拆分规则说明：</strong><br>';
     html += '每日投入 = 阶段预估投入 / 阶段实际天数（由日期范围计算）<br>';
     html += '每月投入 = 该月每日投入的聚合<br><br>';
-    STAGES.forEach(function(stage) {
+    stages.forEach(function(stage) {
       const est = parseFloat(p[stage.estimateField]) || 0;
       const startD = parseDate(p[stage.startField]);
-      const endD = parseDate(p[stage.endField]);
+      var endD = parseDate(p[stage.endField]);
+      // Special case: STR5+6个月
+      if (stage.key === 'str5Plus6m') {
+        var str5 = parseDate(p.str5Date);
+        if (str5) {
+          endD = new Date(str5);
+          endD.setDate(endD.getDate() + 179);
+        }
+      }
       let actualDays = 0;
       let daily = 0;
       if (startD && endD && startD <= endD && est) {
@@ -1436,13 +1824,21 @@ function closeDetailModal() {
 
 // ===== Navigation =====
 function switchNav(nav) {
-  if (nav !== 'tos') {
+  if (nav !== 'tos' && nav !== 'device') {
     showToast('该模块正在建设中，敬请期待', 'info');
     return;
   }
   state.currentNav = nav;
   state.currentTab = 'overview';
   state.selectedIds = [];
+  // Initialize filters for the new nav
+  var fc = getFilterConfig();
+  state.filters = {};
+  state.filters[fc.key] = [];
+  getExtraFilterConfigs().forEach(function(efc) { state.filters[efc.key] = []; });
+  state.filters.version = [];
+  state.filters.month = [];
+  rebuildHeaderMap();
   loadData();
   render();
 }
@@ -1511,6 +1907,71 @@ function getSampleData() {
   ];
 }
 
+function getDeviceSampleData() {
+  return [
+    {
+      id: 'device_sample_001',
+      projectName: '智能手机X1 Pro',
+      marketName: '国内市场',
+      brand: '品牌A',
+      productLine: '旗舰产品线',
+      projectLevel: 'P1',
+      levelCoefficient: '1.2',
+      secondaryDept: '整机研发一部',
+      conceptToStr1Estimate: '50',
+      str1ToStr3Estimate: '200',
+      str3ToStr4Estimate: '350',
+      str4ToStr4aEstimate: '30',
+      str4aToStr5Estimate: '60',
+      str5Plus6mEstimate: '90',
+      conceptStartDate: '2025-01-15',
+      str1Date: '2025-03-15',
+      str3Date: '2025-07-01',
+      str4Date: '2025-09-15',
+      str4aDate: '2025-10-15',
+      str5Date: '2025-11-01',
+      str5Plus6mDate: '2026-05-01',
+      conceptToStr1Duration: '60',
+      str1ToStr3Duration: '108',
+      str3ToStr4Duration: '76',
+      str4ToStr4aDuration: '30',
+      str4aToStr5Duration: '17',
+      str5Plus6mDuration: '180',
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'device_sample_002',
+      projectName: '平板电脑Y2 Lite',
+      marketName: '海外市场',
+      brand: '品牌B',
+      productLine: '中端产品线',
+      projectLevel: 'P2',
+      levelCoefficient: '0.8',
+      secondaryDept: '整机研发二部',
+      conceptToStr1Estimate: '30',
+      str1ToStr3Estimate: '120',
+      str3ToStr4Estimate: '200',
+      str4ToStr4aEstimate: '20',
+      str4aToStr5Estimate: '40',
+      str5Plus6mEstimate: '50',
+      conceptStartDate: '2025-03-01',
+      str1Date: '2025-04-15',
+      str3Date: '2025-08-01',
+      str4Date: '2025-10-15',
+      str4aDate: '2025-11-15',
+      str5Date: '2025-12-01',
+      str5Plus6mDate: '2026-06-01',
+      conceptToStr1Duration: '46',
+      str1ToStr3Duration: '108',
+      str3ToStr4Duration: '75',
+      str4ToStr4aDuration: '31',
+      str4aToStr5Duration: '16',
+      str5Plus6mDuration: '180',
+      createdAt: new Date().toISOString(),
+    },
+  ];
+}
+
 // ===== Drag & Drop =====
 function setupDragDrop() {
   const drop = document.getElementById('fileDrop');
@@ -1545,7 +2006,8 @@ function init() {
       el = el.parentElement;
     }
     if (!inside) {
-      ['dept','version','month'].forEach(function(k) {
+      var keys = getAllFilterKeys();
+      keys.forEach(function(k) {
         var m = document.getElementById('ms-menu-' + k);
         if (m) m.classList.remove('open');
       });
