@@ -1,0 +1,45 @@
+{
+  "projects": [
+    {
+      "id": "tos_001",
+      "projectName": "tOS 17.0 数据看板",
+      "primaryDept": "研发部",
+      "secondaryDept": "平台开发组",
+      "planningEstimate": "0",
+      "conceptEstimate": "800000",
+      "planEstimate": "1200000",
+      "devVerifyEstimate": "3500000",
+      "launchEstimate": "600000",
+      "maintenanceEstimate": "900000",
+      "planningKODate": "2025-01-15",
+      "charterStartDate": "2025-02-01",
+      "str1Date": "2025-03-15",
+      "str3Date": "2025-06-01",
+      "str5Date": "2025-09-15",
+      "mrDate": "2025-11-01",
+      "maintenanceEndDate": "2026-11-01",
+      "createdAt": "2026-10-21T11:14:56.493Z"
+    },
+    {
+      "id": "tos_002",
+      "projectName": "tOS 18.0 智能分析平台",
+      "primaryDept": "研发部",
+      "secondaryDept": "AI应用组",
+      "planningEstimate": "0",
+      "conceptEstimate": "500000",
+      "planEstimate": "900000",
+      "devVerifyEstimate": "2800000",
+      "launchEstimate": "400000",
+      "maintenanceEstimate": "600000",
+      "planningKODate": "2025-04-01",
+      "charterStartDate": "2025-04-20",
+      "str1Date": "2025-06-01",
+      "str3Date": "2025-08-15",
+      "str5Date": "2025-12-01",
+      "mrDate": "2026-01-15",
+      "maintenanceEndDate": "2027-01-15",
+      "createdAt": "2026-10-21T11:14:56.497Z"
+    }
+  ],
+  "updatedAt": "2026-10-21T11:14:56.497Z"
+}
