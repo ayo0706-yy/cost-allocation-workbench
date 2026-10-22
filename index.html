@@ -1992,28 +1992,8 @@ function setupDragDrop() {
   });
 }
 
-// ===== Remote Data Sync =====
-function loadRemoteData() {
-  return fetch('data.json', { cache: 'no-store' })
-    .then(function(r) {
-      if (!r.ok) return null;
-      return r.json();
-    })
-    .then(function(data) {
-      if (data && data.projects && data.projects.length > 0) {
-        localStorage.setItem('costAlloc_tos_projects', JSON.stringify(data.projects));
-        localStorage.setItem('costAlloc_initialized_tos', 'true');
-        if (data.updatedAt) {
-          localStorage.setItem('costAlloc_remote_updated', data.updatedAt);
-        }
-      }
-    })
-    .catch(function() { /* fall back to localStorage/sample data */ });
-}
-
 // ===== Init =====
 function init() {
-  loadRemoteData().finally(function() {
   loadData();
   render();
   setupDragDrop();
@@ -2033,7 +2013,6 @@ function init() {
       });
     }
   });
-  }); // end loadRemoteData().finally()
 }
 
 // Run when DOM is ready
