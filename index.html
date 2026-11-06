@@ -453,8 +453,11 @@ function getUniqueExtraFilterValues(fc) {
   return Array.from(vals).sort();
 }
 function getBasicDisplayFields() {
-  // Return basic fields excluding projectName (shown as sticky column)
-  return getBasicFields().filter(function(f) { return f.key !== 'projectName'; });
+  // Return basic fields excluding projectCode & projectName (shown as dedicated leading columns)
+  return getBasicFields().filter(function(f) { return f.key !== 'projectName' && f.key !== 'projectCode'; });
+}
+function hasProjectCodeField() {
+  return getFields().some(function(f) { return f.key === 'projectCode'; });
 }
 
 // ===== State =====
@@ -1081,6 +1084,7 @@ function renderOverviewTable(projects) {
   var allSelected = projects.length > 0 && projects.every(function(p) { return state.selectedIds.indexOf(p.id) !== -1; });
   html += '<th style="width:40px;text-align:center"><input type="checkbox" ' + (allSelected ? 'checked' : '') + ' onchange="toggleSelectAll()" style="cursor:pointer" /></th>';
   html += '<th style="min-width:120px">操作</th>';
+  if (hasProjectCodeField()) html += '<th style="min-width:110px">项目编码</th>';
   html += '<th class="col-sticky" style="min-width:160px">项目名称</th>';
   // Basic info columns (dynamic)
   basicFields.forEach(function(f) {
@@ -1109,6 +1113,7 @@ function renderOverviewTable(projects) {
     html += '<button class="btn-link" onclick="openEntryModal(\'' + p.id + '\')">编辑</button>';
     html += '<button class="btn-link" style="color:#ff4d4f" onclick="deleteProject(\'' + p.id + '\')">删除</button>';
     html += '</td>';
+    if (hasProjectCodeField()) html += '<td>' + (p.projectCode || '') + '</td>';
     html += '<td class="col-sticky">' + (p.projectName || '') + '</td>';
     // Basic info values (dynamic)
     basicFields.forEach(function(f) {
@@ -1133,6 +1138,7 @@ function renderOverviewTable(projects) {
   html += '<tr class="summary-row">';
   html += '<td></td>';
   html += '<td></td>';
+  if (hasProjectCodeField()) html += '<td></td>';
   html += '<td class="col-sticky">合计</td>';
   // Empty basic cells
   for (var i = 0; i < basicFields.length; i++) html += '<td></td>';
@@ -1171,6 +1177,7 @@ function renderMonthlyTable(projects) {
   var basicFields = getBasicDisplayFields();
   let html = '<div class="table-wrapper"><table><thead><tr>';
   html += '<th style="min-width:80px">操作</th>';
+  if (hasProjectCodeField()) html += '<th style="min-width:110px">项目编码</th>';
   html += '<th class="col-sticky" style="min-width:180px">项目名称</th>';
   basicFields.forEach(function(f) {
     html += '<th style="min-width:90px">' + f.label + '</th>';
@@ -1189,6 +1196,7 @@ function renderMonthlyTable(projects) {
 
     html += '<tr>';
     html += '<td class="text-center"><button class="btn-link" onclick="openDetailModal(\'' + p.id + '\')">详情</button></td>';
+    if (hasProjectCodeField()) html += '<td>' + (p.projectCode || '') + '</td>';
     html += '<td class="col-sticky">' + (p.projectName || '') + '</td>';
     basicFields.forEach(function(f) {
       html += '<td>' + (p[f.key] || '') + '</td>';
@@ -1209,6 +1217,7 @@ function renderMonthlyTable(projects) {
   // Summary row
   html += '<tr class="summary-row">';
   html += '<td></td>';
+  if (hasProjectCodeField()) html += '<td></td>';
   html += '<td class="col-sticky">月度合计</td>';
   for (var i = 0; i < basicFields.length; i++) html += '<td></td>';
   let grandTotal = 0;
@@ -1689,7 +1698,9 @@ function exportMonthlyData() {
 
   var basicFields = getBasicDisplayFields();
   // Build headers
-  var headers = ['项目名称'];
+  var headers = [];
+  if (hasProjectCodeField()) headers.push('项目编码');
+  headers.push('项目名称');
   basicFields.forEach(function(f) { headers.push(f.label); });
   displayMonths.forEach(function(m) { headers.push(m); });
   headers.push('合计');
@@ -1699,7 +1710,9 @@ function exportMonthlyData() {
 
   projects.forEach(function(p) {
     var mData = calculateMonthlyData(p);
-    var row = [p.projectName || ''];
+    var row = [];
+    if (hasProjectCodeField()) row.push(p.projectCode || '');
+    row.push(p.projectName || '');
     basicFields.forEach(function(f) { row.push(p[f.key] || ''); });
     var rowTotal = 0;
     displayMonths.forEach(function(m) {
@@ -1715,6 +1728,7 @@ function exportMonthlyData() {
 
   // Summary row
   var summaryRow = ['月度合计'];
+  if (hasProjectCodeField()) summaryRow.push('');
   for (var i = 0; i < basicFields.length; i++) summaryRow.push('');
   var grandTotal = 0;
   displayMonths.forEach(function(m) {
@@ -1834,7 +1848,10 @@ function openDetailModal(projectId) {
 
   let html = '<div style="margin-bottom:16px">';
   html += '<h3 style="font-size:16px;margin-bottom:8px">' + (p.projectName || '') + '</h3>';
-  var basicInfo = basicFields.map(function(f) { return p[f.key] || ''; }).filter(function(v) { return v; }).join(' / ');
+  var basicInfoParts = [];
+  if (hasProjectCodeField() && p.projectCode) basicInfoParts.push(p.projectCode);
+  basicFields.forEach(function(f) { if (p[f.key]) basicInfoParts.push(p[f.key]); });
+  var basicInfo = basicInfoParts.join(' / ');
   html += '<p style="color:#8c8c8c;font-size:13px">' + basicInfo + '</p>';
   html += '<p style="color:#1890ff;font-size:14px;margin-top:4px">预估投入合计：' + formatMoney(getTotalEstimate(p)) + ' 人月</p>';
   html += '</div>';
