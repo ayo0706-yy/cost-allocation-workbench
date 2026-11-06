@@ -375,13 +375,14 @@ const DEVICE_STAGES = [
 ];
 
 const DEVICE_FIELDS = [
+  {key:'projectCode',label:'项目编码',type:'text',group:'basic'},
   {key:'projectName',label:'项目名称',type:'text',group:'basic'},
+  {key:'secondaryDept',label:'二级部门',type:'text',group:'basic'},
   {key:'marketName',label:'市场名称',type:'text',group:'basic'},
   {key:'brand',label:'品牌',type:'text',group:'basic'},
   {key:'productLine',label:'产品线',type:'text',group:'basic'},
   {key:'projectLevel',label:'项目等级',type:'text',group:'basic'},
   {key:'levelCoefficient',label:'等级系数',type:'number',group:'basic'},
-  {key:'secondaryDept',label:'二级部门',type:'text',group:'basic'},
   {key:'conceptToStr1Estimate',label:'概念启动~STR1投入',type:'number',group:'estimate'},
   {key:'str1ToStr3Estimate',label:'STR1~STR3投入',type:'number',group:'estimate'},
   {key:'str3ToStr4Estimate',label:'STR3~STR4投入',type:'number',group:'estimate'},
@@ -720,10 +721,12 @@ function toggleFilter(key, value) {
     }
   });
   if (needsFilterRerender) {
-    renderMain();
+    renderDataArea();
+    syncFilterCheckboxes();
   } else {
     renderDataArea();
     updateFilterCounts();
+    syncFilterCheckboxes();
   }
 }
 
@@ -769,8 +772,8 @@ function selectAllFilter(key) {
       }
     }
   });
-  if (needsFilterRerender) renderMain();
-  else renderDataArea();
+  if (needsFilterRerender) { renderDataArea(); syncFilterCheckboxes(); }
+  else { renderDataArea(); syncFilterCheckboxes(); }
 }
 
 function clearFilter(key) {
@@ -781,10 +784,8 @@ function clearFilter(key) {
       state.filters[efc.key] = [];
     }
   });
-  // Always rerender filter bar since clearing parent affects children
-  var hasParentChild = getExtraFilterConfigs().some(function(efc) { return efc.parentKey === key; });
-  if (hasParentChild) renderMain();
-  else renderDataArea();
+  renderDataArea();
+  syncFilterCheckboxes();
 }
 
 // ===== Batch Selection =====
@@ -953,6 +954,20 @@ function updateFilterCounts() {
   });
 }
 
+function syncFilterCheckboxes() {
+  // Sync all checkbox states in filter menus with state.filters
+  var keys = getAllFilterKeys();
+  keys.forEach(function(k) {
+    var menu = document.getElementById('ms-menu-' + k);
+    if (!menu) return;
+    var selected = state.filters[k] || [];
+    var boxes = menu.querySelectorAll('input[type="checkbox"]');
+    boxes.forEach(function(cb) {
+      cb.checked = selected.indexOf(cb.value) !== -1;
+    });
+  });
+}
+
 function renderDataArea() {
   var area = document.getElementById('dataArea');
   if (!area) return;
@@ -1015,6 +1030,7 @@ function renderDataArea() {
   }
   area.innerHTML = html;
   updateFilterCounts();
+  syncFilterCheckboxes();
 }
 
 // ===== Rendering =====
@@ -1594,7 +1610,7 @@ function downloadTemplate() {
   var sampleData;
   if (state.currentNav === 'device') {
     sampleData = {
-      projectName: '整机产品A', marketName: '国内市场', brand: '品牌X', productLine: '产品线1', projectLevel: 'P1', levelCoefficient: '1.0', secondaryDept: '整机研发一部',
+      projectCode: 'DEV-2025-001', projectName: '整机产品A', secondaryDept: '整机研发一部', marketName: '国内市场', brand: '品牌X', productLine: '产品线1', projectLevel: 'P1', levelCoefficient: '1.0',
       conceptToStr1Estimate: '50', str1ToStr3Estimate: '200',
       str3ToStr4Estimate: '350', str4ToStr4aEstimate: '30', str4aToStr5Estimate: '60', str5Plus6mEstimate: '90',
       conceptStartDate: '2025-01-15', str1Date: '2025-03-15',
@@ -1987,13 +2003,14 @@ function getDeviceSampleData() {
   return [
     {
       id: 'device_sample_001',
+      projectCode: 'DEV-2025-001',
       projectName: '智能手机X1 Pro',
+      secondaryDept: '整机研发一部',
       marketName: '国内市场',
       brand: '品牌A',
       productLine: '旗舰产品线',
       projectLevel: 'P1',
       levelCoefficient: '1.2',
-      secondaryDept: '整机研发一部',
       conceptToStr1Estimate: '50',
       str1ToStr3Estimate: '200',
       str3ToStr4Estimate: '350',
@@ -2017,13 +2034,14 @@ function getDeviceSampleData() {
     },
     {
       id: 'device_sample_002',
+      projectCode: 'DEV-2025-002',
       projectName: '平板电脑Y2 Lite',
+      secondaryDept: '整机研发二部',
       marketName: '海外市场',
       brand: '品牌B',
       productLine: '中端产品线',
       projectLevel: 'P2',
       levelCoefficient: '0.8',
-      secondaryDept: '整机研发二部',
       conceptToStr1Estimate: '30',
       str1ToStr3Estimate: '120',
       str3ToStr4Estimate: '200',
