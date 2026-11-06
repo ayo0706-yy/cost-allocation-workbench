@@ -39,7 +39,7 @@ body{font-family:"Microsoft YaHei","Segoe UI",sans-serif;background:#f0f2f5;colo
 .toolbar{display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
 .toolbar .spacer{flex:1}
 /* Filter bar */
-.filter-bar{display:flex;gap:12px;margin-bottom:16px;align-items:flex-start;flex-wrap:wrap;background:#fff;padding:12px 16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);position:relative;z-index:10}
+.filter-bar{display:flex;gap:12px;margin-bottom:16px;align-items:flex-start;flex-wrap:wrap;background:#fff;padding:12px 16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);position:relative;z-index:100}
 .ms-dropdown{position:relative}
 .ms-trigger{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border:1px solid #d9d9d9;border-radius:4px;font-size:13px;cursor:pointer;background:#fff;min-width:110px;user-select:none;white-space:nowrap;transition:border-color .2s}
 .ms-trigger:hover{border-color:#1890ff}
@@ -413,11 +413,14 @@ function getDurationFields() { return getFields().filter(function(f) { return f.
 function getLastEstimateKey() { var s = getStages(); return s[s.length - 1].estimateField; }
 function getFilterConfig() {
   if (state.currentNav === 'device') return {key: 'brand', label: '品牌', field: 'brand', icon: '\uD83C\uDFF7\uFE0F'};
-  return {key: 'dept', label: '部门', field: 'primaryDept', icon: '\uD83C\uDFE2'};
+  return {key: 'primaryDept', label: '一级部门', field: 'primaryDept', icon: '\uD83C\uDFE2'};
 }
 function getExtraFilterConfigs() {
   if (state.currentNav === 'device') return [{key: 'secondaryDept', label: '二级部门', field: 'secondaryDept', icon: '\uD83C\uDFE2'}];
-  return [];
+  return [
+    {key: 'secondaryDept', label: '二级部门', field: 'secondaryDept', icon: '\uD83C\uDFE2', parentKey: 'primaryDept'},
+    {key: 'projectName', label: '项目名称', field: 'projectName', icon: '\uD83D\uDCCB'}
+  ];
 }
 function getAllFilterKeys() {
   var fc = getFilterConfig();
@@ -429,10 +432,22 @@ function getAllFilterKeys() {
 }
 function getUniqueExtraFilterValues(fc) {
   var field = fc.field;
+  var parentKey = fc.parentKey;
+  var parentValues = parentKey ? (state.filters[parentKey] || []) : [];
   var vals = new Set();
-  state.projects.forEach(function(p) { if (p[field]) vals.add(p[field]); });
+  var addVal = function(p) {
+    if (p[field]) {
+      if (parentKey && parentValues.length > 0) {
+        // Only include if project's parentKey matches a selected parent value
+        if (parentValues.indexOf(p[parentKey]) !== -1) vals.add(p[field]);
+      } else {
+        vals.add(p[field]);
+      }
+    }
+  };
+  state.projects.forEach(addVal);
   state.versions.forEach(function(v) {
-    if (v.data) v.data.forEach(function(p) { if (p[field]) vals.add(p[field]); });
+    if (v.data) v.data.forEach(addVal);
   });
   return Array.from(vals).sort();
 }
@@ -687,7 +702,45 @@ function toggleFilter(key, value) {
   const idx = arr.indexOf(value);
   if (idx === -1) arr.push(value);
   else arr.splice(idx, 1);
-  renderDataArea();
+  // If this filter is a parent for another, clean up child selections
+  var needsFilterRerender = false;
+  getExtraFilterConfigs().forEach(function(efc) {
+    if (efc.parentKey === key) {
+      needsFilterRerender = true;
+      var childArr = state.filters[efc.key] || [];
+      var parentValues = state.filters[key] || [];
+      if (parentValues.length > 0) {
+        // Filter child values to only those that still belong to selected parents
+        state.filters[efc.key] = childArr.filter(function(cv) {
+          return isChildValueLinked(cv, efc, parentValues);
+        });
+      } else {
+        // Parent filter cleared - keep child selections but mark for rerender
+      }
+    }
+  });
+  if (needsFilterRerender) {
+    renderMain();
+  } else {
+    renderDataArea();
+    updateFilterCounts();
+  }
+}
+
+function isChildValueLinked(childValue, childFc, parentValues) {
+  // Check if childValue belongs to any of the parentValues
+  var field = childFc.field;
+  var parentKey = childFc.parentKey;
+  var result = false;
+  state.projects.forEach(function(p) {
+    if (p[field] === childValue && parentValues.indexOf(p[parentKey]) !== -1) result = true;
+  });
+  state.versions.forEach(function(v) {
+    if (v.data) v.data.forEach(function(p) {
+      if (p[field] === childValue && parentValues.indexOf(p[parentKey]) !== -1) result = true;
+    });
+  });
+  return result;
 }
 
 function selectAllFilter(key) {
@@ -703,12 +756,35 @@ function selectAllFilter(key) {
       else if (key === 'month') state.filters[key] = getAllMonths(state.projects);
     }
   }
-  renderDataArea();
+  // Clean up child filters if this is a parent key
+  var needsFilterRerender = false;
+  getExtraFilterConfigs().forEach(function(efc) {
+    if (efc.parentKey === key) {
+      needsFilterRerender = true;
+      var parentValues = state.filters[key] || [];
+      if (parentValues.length > 0) {
+        state.filters[efc.key] = (state.filters[efc.key] || []).filter(function(cv) {
+          return isChildValueLinked(cv, efc, parentValues);
+        });
+      }
+    }
+  });
+  if (needsFilterRerender) renderMain();
+  else renderDataArea();
 }
 
 function clearFilter(key) {
   state.filters[key] = [];
-  renderDataArea();
+  // If this is a parent key, clear children too
+  getExtraFilterConfigs().forEach(function(efc) {
+    if (efc.parentKey === key) {
+      state.filters[efc.key] = [];
+    }
+  });
+  // Always rerender filter bar since clearing parent affects children
+  var hasParentChild = getExtraFilterConfigs().some(function(efc) { return efc.parentKey === key; });
+  if (hasParentChild) renderMain();
+  else renderDataArea();
 }
 
 // ===== Batch Selection =====
