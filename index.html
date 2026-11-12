@@ -2237,6 +2237,7 @@ function renderLevelStructure() {
   html += '<button class="btn" onclick="openLevelImportModal()">&#11015; 导入数据</button>';
   html += '<button class="btn" onclick="downloadLevelTemplate()">&#11015; 下载模板</button>';
   html += '<button class="btn" onclick="exportLevelData()">&#128202; 导出职级结构</button>';
+  html += '<button class="btn" onclick="batchDeleteLevels()" id="lb-batch-del" style="display:none;color:#ff4d4f;border-color:#ff4d4f">&#128465; 批量删除 (<span id="lb-selected-count">0</span>)</button>';
   html += '</div>';
   // Table
   html += renderLevelTable();
@@ -2244,21 +2245,26 @@ function renderLevelStructure() {
 }
 
 function renderLevelTable() {
-  var rows = state.levelStructures.filter(function(r) {
+  var filtered = state.levelStructures.map(function(r, i) { return { r: r, origIdx: i }; }).filter(function(x) {
+    var r = x.r;
     if (state.levelFilterYear && r.budgetYear !== state.levelFilterYear) return false;
     if (state.levelFilterDept && r.primaryDept !== state.levelFilterDept) return false;
     return true;
   });
-  if (rows.length === 0) {
+  if (filtered.length === 0) {
     return '<div class="empty-state"><div class="icon">&#128100;</div><p>暂无职级结构数据，请点击「手动录入」或「导入数据」添加</p></div>';
   }
   var html = '<div class="table-wrapper"><table><thead><tr>';
+  html += '<th style="width:36px"><input type="checkbox" id="level-select-all" onchange="toggleLevelSelectAll(this.checked)" /></th>';
   LEVEL_FIELDS.forEach(function(f) { html += '<th>' + f.label + '</th>'; });
   html += '<th>职级和</th><th style="min-width:140px">操作</th></tr></thead><tbody>';
-  rows.forEach(function(r, idx) {
+  filtered.forEach(function(x) {
+    var r = x.r;
+    var idx = x.origIdx;
     var sum = levelSum(r);
     var cls = Math.abs(sum - 1) < 0.0001 ? '' : 'level-sum-error';
     html += '<tr class="' + cls + '">';
+    html += '<td><input type="checkbox" class="level-row-check" data-idx="' + idx + '" onchange="updateLevelBatchBar()" /></td>';
     LEVEL_FIELDS.forEach(function(f) {
       var v = r[f.key];
       if (LEVEL_TOTAL_KEYS.indexOf(f.key) !== -1) {
@@ -2274,6 +2280,38 @@ function renderLevelTable() {
   });
   html += '</tbody></table></div>';
   return html;
+}
+
+function toggleLevelSelectAll(checked) {
+  var checks = document.querySelectorAll('.level-row-check');
+  checks.forEach(function(c) { c.checked = checked; });
+  updateLevelBatchBar();
+}
+
+function updateLevelBatchBar() {
+  var checks = document.querySelectorAll('.level-row-check:checked');
+  var count = checks.length;
+  var bar = document.getElementById('lb-batch-del');
+  var cnt = document.getElementById('lb-selected-count');
+  if (bar) bar.style.display = count > 0 ? '' : 'none';
+  if (cnt) cnt.textContent = count;
+  var all = document.getElementById('level-select-all');
+  if (all) {
+    var total = document.querySelectorAll('.level-row-check').length;
+    all.checked = count > 0 && count === total;
+    all.indeterminate = count > 0 && count < total;
+  }
+}
+
+function batchDeleteLevels() {
+  var checks = document.querySelectorAll('.level-row-check:checked');
+  if (checks.length === 0) { showToast('请先勾选要删除的记录', 'info'); return; }
+  if (!confirm('确定要删除选中的 ' + checks.length + ' 条职级结构记录吗？此操作不可撤销。')) return;
+  var indices = Array.from(checks).map(function(c) { return Number(c.dataset.idx); }).sort(function(a, b) { return b - a; });
+  indices.forEach(function(i) { state.levelStructures.splice(i, 1); });
+  saveLevelStructures();
+  showToast('已删除 ' + indices.length + ' 条记录', 'success');
+  render();
 }
 
 function filterLevelYear(v) { state.levelFilterYear = v; render(); }
@@ -2486,9 +2524,7 @@ function renderLevelBreakdownTab(filteredProjects) {
   var html = '';
   html += '<div class="toolbar">';
   html += '<button class="btn btn-primary" onclick="openLevelBreakdownConfig()">&#9881;&#65039; 配置测算</button>';
-  if (levelBreakdownState.rows.length > 0) {
-    html += '<button class="btn" onclick="exportLevelBreakdown()">&#128202; 导出 Excel</button>';
-  }
+  html += '<button class="btn" onclick="exportLevelBreakdown()" id="lb-export-btn" style="' + (levelBreakdownState.rows.length > 0 ? '' : 'display:none') + '">&#128202; 导出 Excel</button>';
   html += '</div>';
   if (!filteredProjects || filteredProjects.length === 0) {
     return html + '<div class="empty-state"><div class="icon">&#128202;</div><p>请先在总览或月度 tab 录入项目数据</p></div>';
