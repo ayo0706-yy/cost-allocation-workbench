@@ -2281,7 +2281,7 @@ function filterLevelDept(v) { state.levelFilterDept = v; render(); }
 
 function openLevelForm(idx) {
   var r = idx !== undefined ? state.levelStructures[idx] : {};
-  var html = '<div class="modal show"><div class="modal-dialog" style="width:480px"><div class="modal-header">';
+  var html = '<div class="modal" style="width:520px"><div class="modal-header">';
   html += '<h3>' + (idx !== undefined ? '编辑职级结构' : '录入职级结构') + '</h3>';
   html += '<span class="modal-close" onclick="closeModal(\'levelFormModal\')">&times;</span></div><div class="modal-body">';
   html += '<input type="hidden" id="level-edit-idx" value="' + (idx !== undefined ? idx : -1) + '" />';
@@ -2300,9 +2300,10 @@ function openLevelForm(idx) {
   html += '</div>';
   html += '<div id="level-sum-hint" style="margin-top:12px;font-size:12px;color:#8c8c8c">各职级合计：<span id="level-sum-val">0.0</span>%</div>';
   html += '</div><div class="modal-footer"><button class="btn" onclick="closeModal(\'levelFormModal\')">取消</button>';
-  html += '<button class="btn btn-primary" onclick="saveLevel()">保存</button></div></div></div>';
+  html += '<button class="btn btn-primary" onclick="saveLevel()">保存</button></div></div>';
   var m = document.createElement('div');
   m.id = 'levelFormModal';
+  m.className = 'modal-overlay show';
   m.innerHTML = html;
   document.body.appendChild(m);
   // Live sum update
@@ -2369,7 +2370,7 @@ function closeModal(id) {
 }
 
 function openLevelImportModal() {
-  var html = '<div class="modal show"><div class="modal-dialog" style="width:480px"><div class="modal-header">';
+  var html = '<div class="modal" style="width:520px"><div class="modal-header">';
   html += '<h3>导入职级结构数据</h3>';
   html += '<span class="modal-close" onclick="closeModal(\'levelImportModal\')">&times;</span></div><div class="modal-body">';
   html += '<div style="background:#fffbe6;padding:12px;border-radius:4px;font-size:13px;color:#ad6800;margin-bottom:12px">';
@@ -2378,9 +2379,10 @@ function openLevelImportModal() {
   html += '<input type="file" id="levelImportFile" accept=".xlsx,.xls,.csv" style="width:100%" />';
   html += '<p style="font-size:12px;color:#8c8c8c;margin-top:12px">表头需包含：预算年份、部门编码、一级部门、P5/M3、P4/M2、P3/M1、P2、P1、B1、B2、B3、B4、B5<br/>职级列请填写百分比数值（如 25 表示 25%）</p>';
   html += '</div><div class="modal-footer"><button class="btn" onclick="closeModal(\'levelImportModal\')">取消</button>';
-  html += '<button class="btn btn-primary" onclick="handleLevelImport()">导入</button></div></div></div>';
+  html += '<button class="btn btn-primary" onclick="handleLevelImport()">导入</button></div></div>';
   var m = document.createElement('div');
   m.id = 'levelImportModal';
+  m.className = 'modal-overlay show';
   m.innerHTML = html;
   document.body.appendChild(m);
 }
