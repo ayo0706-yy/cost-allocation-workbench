@@ -2410,12 +2410,13 @@ function handleLevelImport() {
           if (mapped) obj[mapped] = String(raw[k]).trim();
         });
         if (!obj.budgetYear || !obj.primaryDept) return;
-        // Convert percentage values (e.g., "25" -> 0.25, "25%" -> 0.25)
+        // Convert percentage values - auto detect: >1.5 means percentage (e.g. "25"), <1.5 means decimal (e.g. 0.25)
         LEVEL_TOTAL_KEYS.forEach(function(k) {
           var v = obj[k];
           if (v === '' || v === undefined || v === null) { obj[k] = 0; return; }
           v = String(v).replace('%', '');
-          obj[k] = Number(v) / 100;
+          v = Number(v);
+          obj[k] = v > 1.5 ? v / 100 : v;
         });
         newRows.push(obj);
       });
