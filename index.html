@@ -820,6 +820,7 @@ function batchDelete() {
   if (!confirm('确定要删除选中的 ' + state.selectedIds.length + ' 个项目吗？此操作不可撤销。')) return;
   state.projects = state.projects.filter(function(x) { return state.selectedIds.indexOf(x.id) === -1; });
   state.selectedIds = [];
+  state.filters.version = [];
   saveData();
   showToast('已删除选中项目', 'success');
   renderMain();
@@ -1412,6 +1413,9 @@ function saveProjectFromForm() {
     showToast('项目数据已添加', 'success');
   }
 
+  // After editing/adding current projects, clear version filter so the view
+  // reflects the live data (version snapshots are historical and shouldn't change).
+  state.filters.version = [];
   saveData();
   closeEntryModal();
   renderMain();
@@ -1420,6 +1424,7 @@ function saveProjectFromForm() {
 function deleteProject(id) {
   if (!confirm('确定要删除该项目吗？此操作不可撤销。')) return;
   state.projects = state.projects.filter(function(x) { return x.id !== id; });
+  state.filters.version = [];
   saveData();
   showToast('项目已删除', 'success');
   renderMain();
@@ -1499,6 +1504,7 @@ function handleFileImport(file) {
 
       if (imported > 0) {
         state.projects = newProjects.concat(state.projects);
+        state.filters.version = [];
         saveData();
         showToast('成功导入 ' + imported + ' 条数据' + (errors > 0 ? '，' + errors + ' 条无效数据已跳过' : ''), 'success');
         closeImportModal();
