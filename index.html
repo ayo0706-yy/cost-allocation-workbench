@@ -54,6 +54,20 @@ body{font-family:"Microsoft YaHei","Segoe UI",sans-serif;background:#f0f2f5;colo
 .ms-select-all:hover{text-decoration:underline}
 .ms-clear{color:#ff4d4f;font-size:12px;cursor:pointer}
 .ms-clear:hover{text-decoration:underline}
+/* Level structure styles */
+.level-sum-error{background:#fff1f0!important}
+.level-sum-error td{color:#ff4d4f}
+.level-sum-warn{background:#fffbe6!important}
+.level-filter-bar{display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+.level-filter-bar label{font-size:13px;color:#595959}
+.level-filter-bar select, .level-filter-bar input{padding:6px 10px;border:1px solid #d9d9d9;border-radius:4px;font-size:13px}
+.level-form-row{display:flex;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.level-form-row label{min-width:80px;font-size:13px;color:#595959}
+.level-form-row input{padding:6px 10px;border:1px solid #d9d9d9;border-radius:4px;width:100px}
+.level-breakdown-controls{display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap;background:#fafafa;padding:12px 16px;border-radius:6px;border:1px solid #f0f0f0}
+.level-breakdown-controls label{font-size:13px;color:#595959}
+.level-breakdown-controls select, .level-breakdown-controls input{padding:6px 10px;border:1px solid #d9d9d9;border-radius:4px;font-size:13px}
+.level-breakdown-controls .btn{margin-left:auto}
 /* Selection bar */
 .selection-bar{display:flex;gap:8px;align-items:center;margin-bottom:12px;padding:8px 16px;background:#e6f7ff;border:1px solid #91d5ff;border-radius:4px}
 .selection-count{font-size:13px;color:#1890ff;font-weight:600;margin-right:auto}
@@ -183,6 +197,9 @@ tr.summary-row .col-sticky{background:#fafafa}
         </div>
         <div class="nav-item" data-nav="tos" onclick="switchNav('tos')">
           <span class="icon">📊</span> tOS项目
+        </div>
+        <div class="nav-item" data-nav="level" onclick="switchNav('level')">
+          <span class="icon">👥</span> tOS职级结构
         </div>
         <div class="nav-item disabled" data-nav="tech" onclick="switchNav('tech')">
           <span class="icon">🛠</span> 技术项目
@@ -325,6 +342,7 @@ function rebuildHeaderMap() {
 const NAV_TITLES = {
   device: '整机产品项目 - 按日分摊测算',
   tos: 'tOS项目 - 按日分摊测算',
+  level: 'tOS职级结构 - 部门月度职级投入测算',
   tech: '技术项目 - 按日分摊测算',
   capability: '能力建设项目 - 按日分摊测算',
 };
@@ -342,6 +360,7 @@ const TOS_STAGES = [
 const TOS_FIELDS = [
   {key:'projectName',label:'项目名称',type:'text',group:'basic'},
   {key:'primaryDept',label:'一级部门',type:'text',group:'basic'},
+  {key:'deptCode',label:'部门编码',type:'text',group:'basic'},
   {key:'secondaryDept',label:'二级部门',type:'text',group:'basic'},
   {key:'planningEstimate',label:'规划阶段预估投入',type:'number',group:'estimate'},
   {key:'conceptEstimate',label:'概念阶段预估投入',type:'number',group:'estimate'},
@@ -462,14 +481,35 @@ function hasProjectCodeField() {
 }
 
 // ===== State =====
+// ===== Level Structure Configuration =====
+const LEVEL_FIELDS = [
+  {key:'budgetYear',label:'预算年份',type:'text'},
+  {key:'deptCode',label:'部门编码',type:'text'},
+  {key:'primaryDept',label:'一级部门',type:'text'},
+  {key:'p5m3',label:'P5/M3',type:'number'},
+  {key:'p4m2',label:'P4/M2',type:'number'},
+  {key:'p3m1',label:'P3/M1',type:'number'},
+  {key:'p2',label:'P2',type:'number'},
+  {key:'p1',label:'P1',type:'number'},
+  {key:'b1',label:'B1',type:'number'},
+  {key:'b2',label:'B2',type:'number'},
+  {key:'b3',label:'B3',type:'number'},
+  {key:'b4',label:'B4',type:'number'},
+  {key:'b5',label:'B5',type:'number'},
+];
+const LEVEL_TOTAL_KEYS = ['p5m3','p4m2','p3m1','p2','p1','b1','b2','b3','b4','b5'];
+
 let state = {
   currentNav: 'device',
   currentTab: 'overview',
   projects: [],
   versions: [],
+  levelStructures: [],
   editingProjectId: null,
   filters: { brand: [], secondaryDept: [], version: [], month: [] },
   selectedIds: [],
+  levelFilterYear: '',
+  levelFilterDept: '',
 };
 
 // ===== Storage =====
@@ -483,6 +523,8 @@ function loadData() {
   state.projects = raw ? JSON.parse(raw) : [];
   const vRaw = localStorage.getItem(getStorageKey('versions'));
   state.versions = vRaw ? JSON.parse(vRaw) : [];
+  const lvlRaw = localStorage.getItem('costAlloc_levelStructures');
+  state.levelStructures = lvlRaw ? JSON.parse(lvlRaw) : [];
   // Load sample data if empty for first time
   if (state.projects.length === 0 && state.currentNav === 'tos' && !localStorage.getItem('costAlloc_initialized_tos')) {
     state.projects = getSampleData();
@@ -498,6 +540,10 @@ function loadData() {
 
 function saveData() {
   localStorage.setItem(getStorageKey('projects'), JSON.stringify(state.projects));
+}
+
+function saveLevelStructures() {
+  localStorage.setItem('costAlloc_levelStructures', JSON.stringify(state.levelStructures));
 }
 
 function saveVersions() {
@@ -1032,6 +1078,8 @@ function renderDataArea() {
   }
   if (state.currentTab === 'overview') {
     html += renderOverviewTable(filteredProjects);
+  } else if (state.currentTab === 'levelBreakdown') {
+    html += renderLevelBreakdownTab(filteredProjects);
   } else {
     html += renderMonthlyTable(filteredProjects);
     // Department breakdown table (device only, when secondaryDept data exists)
@@ -1063,6 +1111,11 @@ function renderNav() {
 function renderMain() {
   const body = document.getElementById('mainBody');
 
+  if (state.currentNav === 'level') {
+    body.innerHTML = renderLevelStructure();
+    return;
+  }
+
   if (state.currentNav !== 'tos' && state.currentNav !== 'device') {
     body.innerHTML = '<div class="coming-soon"><div class="icon">&#128640;</div><h3>' + (NAV_TITLES[state.currentNav] || '') + '</h3><p>该模块正在建设中，敬请期待...</p></div>';
     return;
@@ -1072,6 +1125,9 @@ function renderMain() {
   html += '<div class="tabs">';
   html += '<div class="tab ' + (state.currentTab === 'overview' ? 'active' : '') + '" onclick="switchTab(\'overview\')">&#128203; 项目预估数据总览</div>';
   html += '<div class="tab ' + (state.currentTab === 'monthly' ? 'active' : '') + '" onclick="switchTab(\'monthly\')">&#128197; 项目月度预估数据</div>';
+  if (state.currentNav === 'tos') {
+    html += '<div class="tab ' + (state.currentTab === 'levelBreakdown' ? 'active' : '') + '" onclick="switchTab(\'levelBreakdown\')">&#128101; 部门月度职级投入</div>';
+  }
   html += '</div>';
   html += renderFilterBar();
   html += '<div id="dataArea"></div>';
@@ -1946,7 +2002,7 @@ function closeDetailModal() {
 
 // ===== Navigation =====
 function switchNav(nav) {
-  if (nav !== 'tos' && nav !== 'device') {
+  if (nav !== 'tos' && nav !== 'device' && nav !== 'level') {
     showToast('该模块正在建设中，敬请期待', 'info');
     return;
   }
@@ -1960,6 +2016,8 @@ function switchNav(nav) {
   getExtraFilterConfigs().forEach(function(efc) { state.filters[efc.key] = []; });
   state.filters.version = [];
   state.filters.month = [];
+  state.levelFilterYear = '';
+  state.levelFilterDept = '';
   rebuildHeaderMap();
   loadData();
   render();
@@ -1978,6 +2036,7 @@ function getSampleData() {
       id: 'sample_001',
       projectName: 'tOS 17.0 数据看板',
       primaryDept: '研发部',
+      deptCode: 'DEV001',
       secondaryDept: '平台开发组',
       planningEstimate: '500000',
       conceptEstimate: '800000',
@@ -2004,6 +2063,7 @@ function getSampleData() {
       id: 'sample_002',
       projectName: 'tOS 18.0 智能分析平台',
       primaryDept: '研发部',
+      deptCode: 'DEV001',
       secondaryDept: 'AI应用组',
       planningEstimate: '300000',
       conceptEstimate: '500000',
@@ -2146,6 +2206,401 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {
   init();
+}
+
+// ===== Level Structure Module =====
+function levelSum(row) {
+  return LEVEL_TOTAL_KEYS.reduce(function(s, k) { return s + (Number(row[k]) || 0); }, 0);
+}
+
+function renderLevelStructure() {
+  var html = '';
+  html += '<div class="summary-cards">';
+  html += '<div class="summary-card"><div class="label">职级结构记录</div><div class="value">' + state.levelStructures.length + '<span class="unit">条</span></div></div>';
+  html += '</div>';
+  // Filter bar
+  var years = Array.from(new Set(state.levelStructures.map(function(r) { return r.budgetYear; }))).sort();
+  var depts = Array.from(new Set(state.levelStructures.map(function(r) { return r.primaryDept; }))).sort();
+  html += '<div class="level-filter-bar">';
+  html += '<label>预算年份：</label>';
+  html += '<select onchange="filterLevelYear(this.value)" style="min-width:140px"><option value="">全部</option>';
+  years.forEach(function(y) { html += '<option value="' + y + '" ' + (state.levelFilterYear === y ? 'selected' : '') + '>' + y + '</option>'; });
+  html += '</select>';
+  html += '<label>一级部门：</label>';
+  html += '<select onchange="filterLevelDept(this.value)" style="min-width:140px"><option value="">全部</option>';
+  depts.forEach(function(d) { html += '<option value="' + d + '" ' + (state.levelFilterDept === d ? 'selected' : '') + '>' + d + '</option>'; });
+  html += '</select>';
+  html += '</div>';
+  // Toolbar
+  html += '<div class="toolbar">';
+  html += '<button class="btn btn-primary" onclick="openLevelForm()">&#10133; 手动录入</button>';
+  html += '<button class="btn" onclick="openLevelImportModal()">&#11015; 导入数据</button>';
+  html += '<button class="btn" onclick="downloadLevelTemplate()">&#11015; 下载模板</button>';
+  html += '<button class="btn" onclick="exportLevelData()">&#128202; 导出职级结构</button>';
+  html += '</div>';
+  // Table
+  html += renderLevelTable();
+  return html;
+}
+
+function renderLevelTable() {
+  var rows = state.levelStructures.filter(function(r) {
+    if (state.levelFilterYear && r.budgetYear !== state.levelFilterYear) return false;
+    if (state.levelFilterDept && r.primaryDept !== state.levelFilterDept) return false;
+    return true;
+  });
+  if (rows.length === 0) {
+    return '<div class="empty-state"><div class="icon">&#128100;</div><p>暂无职级结构数据，请点击「手动录入」或「导入数据」添加</p></div>';
+  }
+  var html = '<div class="table-wrapper"><table><thead><tr>';
+  LEVEL_FIELDS.forEach(function(f) { html += '<th>' + f.label + '</th>'; });
+  html += '<th>职级和</th><th style="min-width:140px">操作</th></tr></thead><tbody>';
+  rows.forEach(function(r, idx) {
+    var sum = levelSum(r);
+    var cls = Math.abs(sum - 100) < 0.01 ? '' : 'level-sum-error';
+    html += '<tr class="' + cls + '">';
+    LEVEL_FIELDS.forEach(function(f) {
+      var v = r[f.key];
+      if (LEVEL_TOTAL_KEYS.indexOf(f.key) !== -1) {
+        v = v ? (Number(v) * 100).toFixed(1) + '%' : '';
+      }
+      html += '<td>' + (v !== undefined && v !== null ? v : '') + '</td>';
+    });
+    html += '<td style="font-weight:600;color:' + (Math.abs(sum - 100) < 0.01 ? '#52c41a' : '#ff4d4f') + '">' + sum.toFixed(1) + '%</td>';
+    html += '<td class="text-center">';
+    html += '<button class="btn-link" onclick="editLevel(' + idx + ')">编辑</button> | ';
+    html += '<button class="btn-link" style="color:#ff4d4f" onclick="deleteLevel(' + idx + ')">删除</button>';
+    html += '</td></tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function filterLevelYear(v) { state.levelFilterYear = v; render(); }
+function filterLevelDept(v) { state.levelFilterDept = v; render(); }
+
+function openLevelForm(idx) {
+  var r = idx !== undefined ? state.levelStructures[idx] : {};
+  var html = '<div class="modal show"><div class="modal-dialog" style="width:480px"><div class="modal-header">';
+  html += '<h3>' + (idx !== undefined ? '编辑职级结构' : '录入职级结构') + '</h3>';
+  html += '<span class="modal-close" onclick="closeModal(\'levelFormModal\')">&times;</span></div><div class="modal-body">';
+  html += '<input type="hidden" id="level-edit-idx" value="' + (idx !== undefined ? idx : -1) + '" />';
+  html += '<div class="level-form-row"><label>预算年份</label><input type="text" id="level-budgetYear" value="' + (r.budgetYear || '') + '" placeholder="如 2025" /></div>';
+  html += '<div class="level-form-row"><label>部门编码</label><input type="text" id="level-deptCode" value="' + (r.deptCode || '') + '" placeholder="如 DEV001" /></div>';
+  html += '<div class="level-form-row"><label>一级部门</label><input type="text" id="level-primaryDept" value="' + (r.primaryDept || '') + '" placeholder="如 研发部" /></div>';
+  html += '<hr style="margin:12px 0"/>';
+  html += '<div style="font-size:13px;color:#595959;margin-bottom:8px">各职级比例（百分比，合计应为 100%）：</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">';
+  LEVEL_TOTAL_KEYS.forEach(function(k) {
+    var lbl = LEVEL_FIELDS.find(function(f) { return f.key === k; }).label;
+    var val = r[k] !== undefined ? (Number(r[k]) * 100).toFixed(1) : '';
+    html += '<div><label style="font-size:11px;color:#8c8c8c">' + lbl + '</label>';
+    html += '<input type="number" step="0.1" min="0" max="100" id="level-' + k + '" value="' + val + '" style="width:100%" /></div>';
+  });
+  html += '</div>';
+  html += '<div id="level-sum-hint" style="margin-top:12px;font-size:12px;color:#8c8c8c">各职级合计：<span id="level-sum-val">0.0</span>%</div>';
+  html += '</div><div class="modal-footer"><button class="btn" onclick="closeModal(\'levelFormModal\')">取消</button>';
+  html += '<button class="btn btn-primary" onclick="saveLevel()">保存</button></div></div></div>';
+  var m = document.createElement('div');
+  m.id = 'levelFormModal';
+  m.innerHTML = html;
+  document.body.appendChild(m);
+  // Live sum update
+  LEVEL_TOTAL_KEYS.forEach(function(k) {
+    var el = document.getElementById('level-' + k);
+    if (el) el.addEventListener('input', updateLevelFormSum);
+  });
+  updateLevelFormSum();
+}
+
+function updateLevelFormSum() {
+  var s = 0;
+  LEVEL_TOTAL_KEYS.forEach(function(k) { s += Number(document.getElementById('level-' + k).value) || 0; });
+  var el = document.getElementById('level-sum-val');
+  if (el) {
+    el.textContent = s.toFixed(1);
+    el.style.color = Math.abs(s - 100) < 0.01 ? '#52c41a' : '#ff4d4f';
+  }
+}
+
+function saveLevel() {
+  var idx = Number(document.getElementById('level-edit-idx').value);
+  var row = {
+    budgetYear: document.getElementById('level-budgetYear').value.trim(),
+    deptCode: document.getElementById('level-deptCode').value.trim(),
+    primaryDept: document.getElementById('level-primaryDept').value.trim(),
+  };
+  if (!row.budgetYear || !row.primaryDept) { showToast('预算年份和一级部门为必填项', 'error'); return; }
+  LEVEL_TOTAL_KEYS.forEach(function(k) {
+    row[k] = (Number(document.getElementById('level-' + k).value) || 0) / 100;
+  });
+  if (idx >= 0) {
+    state.levelStructures[idx] = row;
+    showToast('职级结构已更新', 'success');
+  } else {
+    // Check duplicate
+    var dup = state.levelStructures.findIndex(function(r) { return r.budgetYear === row.budgetYear && r.primaryDept === row.primaryDept; });
+    if (dup !== -1) {
+      if (!confirm('预算年份 + 一级部门 已存在，是否覆盖？')) return;
+      state.levelStructures[dup] = row;
+      showToast('已覆盖原有数据', 'success');
+    } else {
+      state.levelStructures.push(row);
+      showToast('职级结构已添加', 'success');
+    }
+  }
+  saveLevelStructures();
+  closeModal('levelFormModal');
+  render();
+}
+
+function editLevel(idx) { openLevelForm(idx); }
+function deleteLevel(idx) {
+  if (!confirm('确定要删除该职级结构记录吗？')) return;
+  state.levelStructures.splice(idx, 1);
+  saveLevelStructures();
+  showToast('已删除', 'success');
+  render();
+}
+
+function closeModal(id) {
+  var m = document.getElementById(id);
+  if (m) m.remove();
+}
+
+function openLevelImportModal() {
+  var html = '<div class="modal show"><div class="modal-dialog" style="width:480px"><div class="modal-header">';
+  html += '<h3>导入职级结构数据</h3>';
+  html += '<span class="modal-close" onclick="closeModal(\'levelImportModal\')">&times;</span></div><div class="modal-body">';
+  html += '<div style="background:#fffbe6;padding:12px;border-radius:4px;font-size:13px;color:#ad6800;margin-bottom:12px">';
+  html += '导入规则：相同预算年份 + 相同一级部门 的记录将<strong>覆盖</strong>原有数据，其余为<strong>增量追加</strong>。</div>';
+  html += '<p style="font-size:13px;color:#8c8c8c;margin-bottom:8px">请选择 Excel 文件（.xlsx / .xls / .csv）：</p>';
+  html += '<input type="file" id="levelImportFile" accept=".xlsx,.xls,.csv" style="width:100%" />';
+  html += '<p style="font-size:12px;color:#8c8c8c;margin-top:12px">表头需包含：预算年份、部门编码、一级部门、P5/M3、P4/M2、P3/M1、P2、P1、B1、B2、B3、B4、B5<br/>职级列请填写百分比数值（如 25 表示 25%）</p>';
+  html += '</div><div class="modal-footer"><button class="btn" onclick="closeModal(\'levelImportModal\')">取消</button>';
+  html += '<button class="btn btn-primary" onclick="handleLevelImport()">导入</button></div></div></div>';
+  var m = document.createElement('div');
+  m.id = 'levelImportModal';
+  m.innerHTML = html;
+  document.body.appendChild(m);
+}
+
+function handleLevelImport() {
+  var fileInput = document.getElementById('levelImportFile');
+  if (!fileInput.files || fileInput.files.length === 0) { showToast('请先选择文件', 'error'); return; }
+  var file = fileInput.files[0];
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: 'array' });
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (rows.length === 0) { showToast('文件中没有数据', 'error'); return; }
+      // Build header map
+      var headerMap = {};
+      LEVEL_FIELDS.forEach(function(f) { headerMap[f.label] = f.key; headerMap[f.key] = f.key; });
+      var imported = 0;
+      var overridden = 0;
+      var newRows = [];
+      rows.forEach(function(raw) {
+        var obj = {};
+        Object.keys(raw).forEach(function(k) {
+          var mapped = headerMap[k];
+          if (mapped) obj[mapped] = String(raw[k]).trim();
+        });
+        if (!obj.budgetYear || !obj.primaryDept) return;
+        // Convert percentage values (e.g., "25" -> 0.25, "25%" -> 0.25)
+        LEVEL_TOTAL_KEYS.forEach(function(k) {
+          var v = obj[k];
+          if (v === '' || v === undefined || v === null) { obj[k] = 0; return; }
+          v = String(v).replace('%', '');
+          obj[k] = Number(v) / 100;
+        });
+        newRows.push(obj);
+      });
+      // Merge: override on (budgetYear, primaryDept), append otherwise
+      newRows.forEach(function(nr) {
+        var dupIdx = state.levelStructures.findIndex(function(r) { return r.budgetYear === nr.budgetYear && r.primaryDept === nr.primaryDept; });
+        if (dupIdx !== -1) { state.levelStructures[dupIdx] = nr; overridden++; }
+        else { state.levelStructures.push(nr); imported++; }
+      });
+      saveLevelStructures();
+      showToast('导入完成：新增 ' + imported + ' 条，覆盖 ' + overridden + ' 条', 'success');
+      closeModal('levelImportModal');
+      render();
+    } catch (err) {
+      console.error(err);
+      showToast('解析文件失败：' + err.message, 'error');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function downloadLevelTemplate() {
+  var headers = LEVEL_FIELDS.map(function(f) { return f.label; });
+  var sampleRow = {
+    budgetYear: '2025', deptCode: 'DEV001', primaryDept: '研发部',
+    p5m3: 15, p4m2: 20, p3m1: 25, p2: 15, p1: 10, b1: 5, b2: 5, b3: 3, b4: 1, b5: 1,
+  };
+  var data = [headers, headers.map(function(h) {
+    var f = LEVEL_FIELDS.find(function(x) { return x.label === h; });
+    return f ? sampleRow[f.key] : '';
+  })];
+  var ws = XLSX.utils.aoa_to_sheet(data);
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '职级结构');
+  XLSX.writeFile(wb, 'tOS职级结构模板.xlsx');
+}
+
+function exportLevelData() {
+  var rows = state.levelStructures.filter(function(r) {
+    if (state.levelFilterYear && r.budgetYear !== state.levelFilterYear) return false;
+    if (state.levelFilterDept && r.primaryDept !== state.levelFilterDept) return false;
+    return true;
+  });
+  if (rows.length === 0) { showToast('没有可导出的数据', 'info'); return; }
+  var headers = LEVEL_FIELDS.map(function(f) { return f.label; });
+  var aoa = [headers];
+  rows.forEach(function(r) {
+    aoa.push(LEVEL_FIELDS.map(function(f) {
+      var v = r[f.key];
+      if (LEVEL_TOTAL_KEYS.indexOf(f.key) !== -1) v = (Number(v) * 100).toFixed(1);
+      return v !== undefined && v !== null ? v : '';
+    }));
+  });
+  var ws = XLSX.utils.aoa_to_sheet(aoa);
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '职级结构');
+  XLSX.writeFile(wb, 'tOS职级结构_' + new Date().toISOString().slice(0,10) + '.xlsx');
+}
+
+// ===== Level Breakdown Tab (tOS project 3rd tab) =====
+var levelBreakdownState = { budgetYear: '', projectId: '', monthStart: '', monthEnd: '' };
+
+function renderLevelBreakdownTab(filteredProjects) {
+  if (!filteredProjects || filteredProjects.length === 0) {
+    return '<div class="empty-state"><div class="icon">&#128202;</div><p>请先在总览或月度 tab 确认有项目数据</p></div>';
+  }
+  var years = Array.from(new Set(state.levelStructures.map(function(r) { return r.budgetYear; }))).sort();
+  if (years.length === 0) {
+    return '<div class="empty-state"><div class="icon">&#128100;</div><p>请先在左侧「tOS职级结构」菜单维护职级结构数据</p></div>';
+  }
+  var projectOptions = filteredProjects.map(function(p) { return '<option value="' + p.id + '">' + p.projectName + ' (' + (p.primaryDept || '') + ')</option>'; }).join('');
+  // Defaults
+  if (!levelBreakdownState.budgetYear) levelBreakdownState.budgetYear = years[0];
+  if (!levelBreakdownState.projectId) levelBreakdownState.projectId = filteredProjects[0].id;
+  var selectedProject = state.projects.find(function(p) { return p.id === levelBreakdownState.projectId; });
+  var months = selectedProject ? getAllMonths([selectedProject]) : [];
+  if (months.length > 0) {
+    if (!levelBreakdownState.monthStart) levelBreakdownState.monthStart = months[0];
+    if (!levelBreakdownState.monthEnd) levelBreakdownState.monthEnd = months[months.length - 1];
+  }
+  // Controls
+  var html = '<div class="level-breakdown-controls">';
+  html += '<label>预算年份：</label>';
+  html += '<select onchange="levelBreakdownState.budgetYear=this.value;renderDataArea()">';
+  years.forEach(function(y) { html += '<option value="' + y + '" ' + (levelBreakdownState.budgetYear === y ? 'selected' : '') + '>' + y + '</option>'; });
+  html += '</select>';
+  html += '<label>项目名称：</label>';
+  html += '<select onchange="levelBreakdownState.projectId=this.value;levelBreakdownState.monthStart=\'\';levelBreakdownState.monthEnd=\'\';renderDataArea()">' + projectOptions + '</select>';
+  html += '<label>起始月份：</label>';
+  html += '<input type="month" onchange="levelBreakdownState.monthStart=this.value;renderDataArea()" value="' + levelBreakdownState.monthStart + '" />';
+  html += '<label>结束月份：</label>';
+  html += '<input type="month" onchange="levelBreakdownState.monthEnd=this.value;renderDataArea()" value="' + levelBreakdownState.monthEnd + '" />';
+  html += '</div>';
+  // Compute breakdown
+  if (!selectedProject) {
+    html += '<div class="empty-state"><p>未选择项目</p></div>';
+    return html;
+  }
+  var breakdown = computeLevelBreakdown(selectedProject, levelBreakdownState);
+  if (breakdown.errors && breakdown.errors.length > 0) {
+    html += '<div style="background:#fff1f0;padding:12px;border-radius:4px;margin-bottom:12px;font-size:13px;color:#ff4d4f">';
+    html += '<strong>⚠️ 以下月份/部门缺少职级结构数据：</strong><ul style="margin:4px 0 0 16px">';
+    breakdown.errors.forEach(function(e) { html += '<li>' + e + '</li>'; });
+    html += '</ul></div>';
+  }
+  if (breakdown.rows.length === 0) {
+    html += '<div class="empty-state"><p>所选月份范围内没有可计算的数据</p></div>';
+    return html;
+  }
+  html += '<button class="btn btn-primary" onclick="exportLevelBreakdown()" style="margin-bottom:12px">&#128202; 导出 Excel</button>';
+  html += renderLevelBreakdownTable(breakdown.rows);
+  html += '<input type="hidden" id="levelBreakdownCache" value="" data-rows="' + encodeURIComponent(JSON.stringify(breakdown.rows)) + '" />';
+  return html;
+}
+
+function computeLevelBreakdown(project, cfg) {
+  var mData = calculateMonthlyData(project);
+  var rows = [];
+  var errors = [];
+  var lvlRows = state.levelStructures.filter(function(r) { return r.budgetYear === cfg.budgetYear; });
+  mData.forEach(function(m) {
+    if (cfg.monthStart && m.month < cfg.monthStart) return;
+    if (cfg.monthEnd && m.month > cfg.monthEnd) return;
+    var lvl = lvlRows.find(function(r) {
+      return (r.deptCode && r.deptCode === project.deptCode) || r.primaryDept === project.primaryDept;
+    });
+    if (!lvl) {
+      errors.push(m.month + '：' + (project.primaryDept || project.deptCode || '未知部门') + ' 无职级结构');
+      return;
+    }
+    var row = { month: m.month, projectName: project.projectName, primaryDept: project.primaryDept, deptCode: project.deptCode, totalInput: m.amount };
+    LEVEL_TOTAL_KEYS.forEach(function(k) { row[k] = Number((m.amount * (lvl[k] || 0)).toFixed(2)); });
+    rows.push(row);
+  });
+  return { rows: rows, errors: errors };
+}
+
+function renderLevelBreakdownTable(rows) {
+  var html = '<div class="table-wrapper"><table><thead><tr>';
+  html += '<th>项目名称</th><th>月份</th><th>一级部门</th><th>预估投入合计</th>';
+  LEVEL_TOTAL_KEYS.forEach(function(k) { html += '<th>' + LEVEL_FIELDS.find(function(f) { return f.key === k; }).label + '</th>'; });
+  html += '</tr></thead><tbody>';
+  rows.forEach(function(r) {
+    html += '<tr>';
+    html += '<td>' + r.projectName + '</td>';
+    html += '<td>' + r.month + '</td>';
+    html += '<td>' + (r.primaryDept || '') + '</td>';
+    html += '<td class="text-right" style="font-weight:600;color:#1890ff">' + formatMoney(r.totalInput) + '</td>';
+    LEVEL_TOTAL_KEYS.forEach(function(k) {
+      html += '<td class="text-right">' + formatMoney(r[k]) + '</td>';
+    });
+    html += '</tr>';
+  });
+  // Summary row
+  var summary = { totalInput: 0 };
+  LEVEL_TOTAL_KEYS.forEach(function(k) { summary[k] = 0; });
+  rows.forEach(function(r) {
+    summary.totalInput += r.totalInput;
+    LEVEL_TOTAL_KEYS.forEach(function(k) { summary[k] += r[k]; });
+  });
+  html += '<tr class="summary-row">';
+  html += '<td colspan="3" class="text-center" style="font-weight:600">合计</td>';
+  html += '<td class="text-right" style="font-weight:600;color:#1890ff">' + formatMoney(summary.totalInput) + '</td>';
+  LEVEL_TOTAL_KEYS.forEach(function(k) { html += '<td class="text-right" style="font-weight:600">' + formatMoney(summary[k]) + '</td>'; });
+  html += '</tr></tbody></table></div>';
+  return html;
+}
+
+function exportLevelBreakdown() {
+  var cache = document.getElementById('levelBreakdownCache');
+  if (!cache) { showToast('请先加载职级投入数据', 'info'); return; }
+  var rows = JSON.parse(decodeURIComponent(cache.dataset.rows || ''));
+  if (!rows || rows.length === 0) { showToast('没有可导出的数据', 'info'); return; }
+  var headers = ['项目名称', '月份', '一级部门', '预估投入合计'];
+  LEVEL_TOTAL_KEYS.forEach(function(k) { headers.push(LEVEL_FIELDS.find(function(f) { return f.key === k; }).label + ' 投入'); });
+  var aoa = [headers];
+  rows.forEach(function(r) {
+    var row = [r.projectName, r.month, r.primaryDept, Number(r.totalInput).toFixed(2)];
+    LEVEL_TOTAL_KEYS.forEach(function(k) { row.push(Number(r[k]).toFixed(2)); });
+    aoa.push(row);
+  });
+  var ws = XLSX.utils.aoa_to_sheet(aoa);
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '部门月度职级投入');
+  XLSX.writeFile(wb, '部门月度职级投入_' + new Date().toISOString().slice(0,10) + '.xlsx');
 }
 </script>
 
