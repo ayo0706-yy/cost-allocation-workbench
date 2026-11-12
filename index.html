@@ -2520,7 +2520,7 @@ function renderLevelBreakdownTab(filteredProjects) {
 }
 
 function openLevelBreakdownConfig() {
-  var projects = state.projects.filter(function(p) { return state.currentNav === 'tos' && (!state.filter.primaryDept || state.filter.primaryDept === '全部' || p.primaryDept === state.filter.primaryDept); });
+  var projects = state.projects.filter(function(p) { return p.primaryDept; });
   if (projects.length === 0) projects = state.projects;
   var years = Array.from(new Set(state.levelStructures.map(function(r) { return r.budgetYear; }))).sort();
   if (years.length === 0) { showToast('请先维护职级结构数据', 'error'); return; }
