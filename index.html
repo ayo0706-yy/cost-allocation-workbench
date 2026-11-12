@@ -1125,8 +1125,11 @@ function renderMain() {
   }
   html += '</div>';
   if (state.currentTab === 'levelStructure') {
-    // Level structure page (no filter bar)
     body.innerHTML = html + renderLevelStructure();
+    return;
+  }
+  if (state.currentTab === 'levelBreakdown') {
+    body.innerHTML = html + renderLevelBreakdownTab(state.projects);
     return;
   }
   html += renderFilterBar();
@@ -2525,6 +2528,7 @@ function renderLevelBreakdownTab(filteredProjects) {
   html += '<div class="toolbar">';
   html += '<button class="btn btn-primary" onclick="openLevelBreakdownConfig()">&#9881;&#65039; 配置测算</button>';
   html += '<button class="btn" onclick="exportLevelBreakdown()" id="lb-export-btn" style="' + (levelBreakdownState.rows.length > 0 ? '' : 'display:none') + '">&#128202; 导出 Excel</button>';
+  html += '<button class="btn" onclick="batchDeleteBreakdown()" id="lb-batch-del" style="display:none;color:#ff4d4f;border-color:#ff4d4f">&#128465; 批量删除 (<span id="lb-selected-count">0</span>)</button>';
   html += '</div>';
   if (!filteredProjects || filteredProjects.length === 0) {
     return html + '<div class="empty-state"><div class="icon">&#128202;</div><p>请先在总览或月度 tab 录入项目数据</p></div>';
@@ -2556,21 +2560,25 @@ function openLevelBreakdownConfig() {
   var years = Array.from(new Set(state.levelStructures.map(function(r) { return r.budgetYear; }))).sort();
   if (years.length === 0) { showToast('请先维护职级结构数据', 'error'); return; }
   if (projects.length === 0) { showToast('请先录入项目数据', 'error'); return; }
+  var savedIds = levelBreakdownState.projectIds.length > 0 ? levelBreakdownState.projectIds : projects.map(function(p) { return p.id; });
+  var selectedProjects = projects.filter(function(p) { return savedIds.indexOf(p.id) !== -1; });
   var html = '<div class="modal" style="width:560px"><div class="modal-header">';
   html += '<h3>部门月度职级投入测算</h3>';
   html += '<span class="modal-close" onclick="closeModal(\'levelBreakdownModal\')">&times;</span></div><div class="modal-body">';
   html += '<div style="background:#e6f7ff;padding:10px;border-radius:4px;font-size:12px;color:#0958d9;margin-bottom:16px">';
-  html += '选择项目（可多选）、预算年份和月份范围，系统将自动匹配各部门的职级结构进行测算。</div>';
+  html += '在项目筛选器中点击项目名进行添加/移除，系统自动匹配各部门的职级结构进行测算。</div>';
   // Budget Year
   html += '<div class="level-form-row"><label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px">预算年份<span style="color:#ff4d4f">*</span></label>';
   html += '<select id="lb-budgetYear" onchange="lbAutoFillMonths()" style="width:100%;padding:6px 8px;border:1px solid #d9d9d9;border-radius:4px">';
   years.forEach(function(y) { html += '<option value="' + y + '">' + y + '</option>'; });
   html += '</select></div>';
-  // Projects (multiselect)
-  html += '<div class="level-form-row"><label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px">项目名称（可多选，按住 Ctrl/Cmd 点击）<span style="color:#ff4d4f">*</span></label>';
-  html += '<select id="lb-projectIds" multiple size="6" style="width:100%;padding:4px;border:1px solid #d9d9d9;border-radius:4px;font-size:13px">';
-  projects.forEach(function(p) { html += '<option value="' + p.id + '">' + p.projectName + '</option>'; });
-  html += '</select><div id="lb-selected-count" style="font-size:12px;color:#8c8c8c;margin-top:4px">已选 0 个项目</div></div>';
+  // Project tag filter
+  html += '<div class="level-form-row"><label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px">项目名称<span style="color:#ff4d4f">*</span></label>';
+  html += '<div id="lb-project-tags" style="border:1px solid #d9d9d9;border-radius:4px;padding:6px;min-height:36px;cursor:text;display:flex;flex-wrap:wrap;gap:4px;background:#fff">';
+  html += '<input id="lb-project-search" placeholder="点击选择或搜索项目..." style="border:none;outline:none;flex:1;min-width:120px;font-size:13px;padding:2px" />';
+  html += '</div>';
+  html += '<div id="lb-project-dropdown" style="display:none;border:1px solid #d9d9d9;border-top:none;border-radius:0 0 4px 4px;max-height:180px;overflow-y:auto;background:#fff;position:relative;z-index:10;margin-top:-1px"></div>';
+  html += '<div id="lb-selected-count" style="font-size:12px;color:#8c8c8c;margin-top:4px">已选 ' + selectedProjects.length + ' 个项目</div></div>';
   // Month range
   html += '<div class="level-form-row"><label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px">月份范围<span style="color:#ff4d4f">*</span></label>';
   html += '<div style="display:flex;align-items:center;gap:8px">';
@@ -2588,12 +2596,102 @@ function openLevelBreakdownConfig() {
   var ySel = document.getElementById('lb-budgetYear');
   ySel.value = levelBreakdownState.budgetYear || years[0];
   lbAutoFillMonths();
-  var pSel = document.getElementById('lb-projectIds');
-  var savedIds = levelBreakdownState.projectIds.length > 0 ? levelBreakdownState.projectIds : projects.map(function(p) { return p.id; });
-  Array.from(pSel.options).forEach(function(o) { o.selected = savedIds.indexOf(o.value) !== -1; });
-  updateLbSelectedCount();
-  pSel.addEventListener('change', updateLbSelectedCount);
+  // Init tag filter
+  lbState = { projects: projects, selected: [], filtered: projects };
+  selectedProjects.forEach(function(p) { lbState.selected.push(p.id); });
+  renderLbProjectTags();
+  // Bind events
+  var tags = document.getElementById('lb-project-tags');
+  var search = document.getElementById('lb-project-search');
+  tags.addEventListener('click', function(e) {
+    if (e.target === tags || e.target === search) { search.focus(); toggleLbDropdown(true); }
+  });
+  search.addEventListener('focus', function() { toggleLbDropdown(true); });
+  search.addEventListener('input', function() { filterLbDropdown(search.value); });
+  document.addEventListener('click', lbDocClickHandler);
+  // Store cleanup
+  levelBreakdownState._hasModal = true;
 }
+
+var lbState = { projects: [], selected: [], filtered: [] };
+
+function renderLbProjectTags() {
+  var container = document.getElementById('lb-project-tags');
+  if (!container) return;
+  var search = document.getElementById('lb-project-search');
+  var ids = lbState.selected.slice();
+  container.innerHTML = '';
+  ids.forEach(function(pid) {
+    var p = lbState.projects.find(function(x) { return x.id === pid; });
+    if (!p) return;
+    var tag = document.createElement('span');
+    tag.style.cssText = 'background:#e6f7ff;border:1px solid #91d5ff;border-radius:3px;padding:2px 6px;font-size:12px;color:#0958d9;display:inline-flex;align-items:center;gap:4px';
+    tag.innerHTML = p.projectName + ' <span style="cursor:pointer;color:#1890ff;font-weight:bold" data-pid="' + pid + '" data-act="remove">×</span>';
+    container.appendChild(tag);
+  });
+  container.appendChild(search);
+  updateLbSelectedCount();
+}
+
+function toggleLbDropdown(show) {
+  var dd = document.getElementById('lb-project-dropdown');
+  if (!dd) return;
+  if (show) {
+    filterLbDropdown('');
+    dd.style.display = 'block';
+  } else {
+    dd.style.display = 'none';
+  }
+}
+
+function filterLbDropdown(q) {
+  var dd = document.getElementById('lb-project-dropdown');
+  if (!dd) return;
+  q = (q || '').trim().toLowerCase();
+  lbState.filtered = lbState.projects.filter(function(p) {
+    if (lbState.selected.indexOf(p.id) !== -1) return false;
+    if (!q) return true;
+    return p.projectName.toLowerCase().indexOf(q) !== -1;
+  });
+  if (lbState.filtered.length === 0) {
+    dd.innerHTML = '<div style="padding:8px;color:#8c8c8c;font-size:12px;text-align:center">无匹配项目</div>';
+  } else {
+    dd.innerHTML = lbState.filtered.map(function(p) {
+      return '<div data-pid="' + p.id + '" style="padding:6px 10px;cursor:pointer;font-size:13px">' + p.projectName + '</div>';
+    }).join('');
+    dd.querySelectorAll('[data-pid]').forEach(function(el) {
+      el.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        var pid = Number(el.dataset.pid);
+        if (lbState.selected.indexOf(pid) === -1) lbState.selected.push(pid);
+        renderLbProjectTags();
+        document.getElementById('lb-project-search').value = '';
+        filterLbDropdown('');
+      });
+    });
+  }
+  dd.querySelectorAll('[data-act="remove"]').forEach(function(el) {
+    el.addEventListener('mousedown', function(e) {
+      e.stopPropagation();
+    });
+  });
+}
+
+var lbDocClickHandler = function(e) {
+  var modal = document.getElementById('levelBreakdownModal');
+  if (!modal) { document.removeEventListener('click', lbDocClickHandler); return; }
+  if (!modal.contains(e.target)) {
+    // Don't close modal, just close dropdown
+    toggleLbDropdown(false);
+  }
+  if (e.target.dataset && e.target.dataset.act === 'remove') {
+    var pid = Number(e.target.dataset.pid);
+    var idx = lbState.selected.indexOf(pid);
+    if (idx !== -1) lbState.selected.splice(idx, 1);
+    renderLbProjectTags();
+    e.stopPropagation();
+  }
+};
 
 function lbAutoFillMonths() {
   var y = document.getElementById('lb-budgetYear').value;
@@ -2603,15 +2701,13 @@ function lbAutoFillMonths() {
 }
 
 function updateLbSelectedCount() {
-  var pSel = document.getElementById('lb-projectIds');
-  var count = Array.from(pSel.options).filter(function(o) { return o.selected; }).length;
-  document.getElementById('lb-selected-count').textContent = '已选 ' + count + ' 个项目';
+  var cnt = document.getElementById('lb-selected-count');
+  if (cnt) cnt.textContent = '已选 ' + (lbState.selected ? lbState.selected.length : 0) + ' 个项目';
 }
 
 function startLevelBreakdownCalc() {
   var budgetYear = document.getElementById('lb-budgetYear').value;
-  var pSel = document.getElementById('lb-projectIds');
-  var projectIds = Array.from(pSel.options).filter(function(o) { return o.selected; }).map(function(o) { return o.value; });
+  var projectIds = (lbState.selected || []).slice();
   var monthStart = document.getElementById('lb-monthStart').value;
   var monthEnd = document.getElementById('lb-monthEnd').value;
   if (!budgetYear || projectIds.length === 0 || !monthStart || !monthEnd) {
@@ -2684,11 +2780,13 @@ function computeLevelBreakdownMulti(project, cfg) {
 
 function renderLevelBreakdownTable(rows) {
   var html = '<div class="table-wrapper"><table><thead><tr>';
+  html += '<th style="width:36px"><input type="checkbox" id="lb-select-all" onchange="toggleLbSelectAll(this.checked)" /></th>';
   html += '<th>月份</th><th>项目名称</th><th>一级部门</th><th>部门编码</th><th>预估投入合计</th>';
   LEVEL_TOTAL_KEYS.forEach(function(k) { html += '<th>' + LEVEL_FIELDS.find(function(f) { return f.key === k; }).label + '</th>'; });
   html += '</tr></thead><tbody>';
-  rows.forEach(function(r) {
+  rows.forEach(function(r, idx) {
     html += '<tr>';
+    html += '<td><input type="checkbox" class="lb-row-check" data-idx="' + idx + '" onchange="updateLbBatchBar()" /></td>';
     html += '<td style="font-weight:600">' + r.month + '</td>';
     html += '<td>' + r.projectName + '</td>';
     html += '<td>' + (r.primaryDept || '') + '</td>';
@@ -2704,11 +2802,41 @@ function renderLevelBreakdownTable(rows) {
     LEVEL_TOTAL_KEYS.forEach(function(k) { summary[k] += r[k]; });
   });
   html += '<tr class="summary-row">';
-  html += '<td colspan="5" class="text-center" style="font-weight:600">合计</td>';
+  html += '<td colspan="6" class="text-center" style="font-weight:600">合计</td>';
   html += '<td class="text-right" style="font-weight:600;color:#1890ff">' + formatMoney(summary.totalInput) + '</td>';
   LEVEL_TOTAL_KEYS.forEach(function(k) { html += '<td class="text-right" style="font-weight:600">' + formatMoney(summary[k]) + '</td>'; });
   html += '</tr></tbody></table></div>';
   return html;
+}
+
+function toggleLbSelectAll(checked) {
+  document.querySelectorAll('.lb-row-check').forEach(function(c) { c.checked = checked; });
+  updateLbBatchBar();
+}
+
+function updateLbBatchBar() {
+  var checks = document.querySelectorAll('.lb-row-check:checked');
+  var count = checks.length;
+  var bar = document.getElementById('lb-batch-del');
+  var cnt = document.getElementById('lb-selected-count');
+  if (bar) bar.style.display = count > 0 ? '' : 'none';
+  if (cnt) cnt.textContent = count;
+  var all = document.getElementById('lb-select-all');
+  if (all) {
+    var total = document.querySelectorAll('.lb-row-check').length;
+    all.checked = count > 0 && count === total;
+    all.indeterminate = count > 0 && count < total;
+  }
+}
+
+function batchDeleteBreakdown() {
+  var checks = document.querySelectorAll('.lb-row-check:checked');
+  if (checks.length === 0) { showToast('请先勾选要删除的行', 'info'); return; }
+  if (!confirm('确定要删除选中的 ' + checks.length + ' 条数据吗？此操作不可撤销。')) return;
+  var indices = Array.from(checks).map(function(c) { return Number(c.dataset.idx); }).sort(function(a, b) { return b - a; });
+  indices.forEach(function(i) { levelBreakdownState.rows.splice(i, 1); });
+  showToast('已删除 ' + indices.length + ' 条数据', 'success');
+  render();
 }
 
 function exportLevelBreakdown() {
