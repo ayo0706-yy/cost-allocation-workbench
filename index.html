@@ -2479,59 +2479,116 @@ function exportLevelData() {
 }
 
 // ===== Level Breakdown Tab (tOS project 3rd tab) =====
-var levelBreakdownState = { budgetYear: '', projectId: '', monthStart: '', monthEnd: '' };
+var levelBreakdownState = { budgetYear: '', projectId: '', monthStart: '', monthEnd: '', rows: [], errors: [], projectName: '', projectDept: '' };
 
 function renderLevelBreakdownTab(filteredProjects) {
-  if (!filteredProjects || filteredProjects.length === 0) {
-    return '<div class="empty-state"><div class="icon">&#128202;</div><p>请先在总览或月度 tab 确认有项目数据</p></div>';
-  }
   var years = Array.from(new Set(state.levelStructures.map(function(r) { return r.budgetYear; }))).sort();
-  if (years.length === 0) {
-    return '<div class="empty-state"><div class="icon">&#128100;</div><p>请先在左侧「tOS职级结构」菜单维护职级结构数据</p></div>';
+  var html = '';
+  // Config bar
+  html += '<div class="toolbar">';
+  html += '<button class="btn btn-primary" onclick="openLevelBreakdownConfig()">&#9881;&#65039; 配置测算</button>';
+  if (levelBreakdownState.rows.length > 0) {
+    html += '<button class="btn" onclick="exportLevelBreakdown()">&#128202; 导出 Excel</button>';
   }
-  var projectOptions = filteredProjects.map(function(p) { return '<option value="' + p.id + '">' + p.projectName + ' (' + (p.primaryDept || '') + ')</option>'; }).join('');
-  // Defaults
-  if (!levelBreakdownState.budgetYear) levelBreakdownState.budgetYear = years[0];
-  if (!levelBreakdownState.projectId) levelBreakdownState.projectId = filteredProjects[0].id;
-  var selectedProject = state.projects.find(function(p) { return p.id === levelBreakdownState.projectId; });
-  var months = selectedProject ? getAllMonths([selectedProject]) : [];
-  if (months.length > 0) {
-    if (!levelBreakdownState.monthStart) levelBreakdownState.monthStart = months[0];
-    if (!levelBreakdownState.monthEnd) levelBreakdownState.monthEnd = months[months.length - 1];
-  }
-  // Controls
-  var html = '<div class="level-breakdown-controls">';
-  html += '<label>预算年份：</label>';
-  html += '<select onchange="levelBreakdownState.budgetYear=this.value;renderDataArea()">';
-  years.forEach(function(y) { html += '<option value="' + y + '" ' + (levelBreakdownState.budgetYear === y ? 'selected' : '') + '>' + y + '</option>'; });
-  html += '</select>';
-  html += '<label>项目名称：</label>';
-  html += '<select onchange="levelBreakdownState.projectId=this.value;levelBreakdownState.monthStart=\'\';levelBreakdownState.monthEnd=\'\';renderDataArea()">' + projectOptions + '</select>';
-  html += '<label>起始月份：</label>';
-  html += '<input type="month" onchange="levelBreakdownState.monthStart=this.value;renderDataArea()" value="' + levelBreakdownState.monthStart + '" />';
-  html += '<label>结束月份：</label>';
-  html += '<input type="month" onchange="levelBreakdownState.monthEnd=this.value;renderDataArea()" value="' + levelBreakdownState.monthEnd + '" />';
   html += '</div>';
-  // Compute breakdown
-  if (!selectedProject) {
-    html += '<div class="empty-state"><p>未选择项目</p></div>';
+  // Validation hints
+  if (!filteredProjects || filteredProjects.length === 0) {
+    return html + '<div class="empty-state"><div class="icon">&#128202;</div><p>请先在总览或月度 tab 录入项目数据</p></div>';
+  }
+  if (years.length === 0) {
+    return html + '<div class="empty-state"><div class="icon">&#128100;</div><p>请先在「职级结构」tab 维护职级结构数据</p></div>';
+  }
+  // No result yet
+  if (levelBreakdownState.rows.length === 0) {
+    html += '<div class="empty-state" style="margin-top:40px"><div class="icon">&#128269;</div><p>点击上方「配置测算」按钮，选择项目、预算年份和月份范围</p></div>';
     return html;
   }
-  var breakdown = computeLevelBreakdown(selectedProject, levelBreakdownState);
-  if (breakdown.errors && breakdown.errors.length > 0) {
-    html += '<div style="background:#fff1f0;padding:12px;border-radius:4px;margin-bottom:12px;font-size:13px;color:#ff4d4f">';
-    html += '<strong>⚠️ 以下月份/部门缺少职级结构数据：</strong><ul style="margin:4px 0 0 16px">';
-    breakdown.errors.forEach(function(e) { html += '<li>' + e + '</li>'; });
+  // Has result - show config summary
+  html += '<div style="background:#e6f7ff;padding:12px 16px;border-radius:4px;margin-bottom:16px;font-size:13px;color:#0958d9;border-left:3px solid #1890ff">';
+  html += '<strong>测算配置：</strong>项目 = ' + levelBreakdownState.projectName + ' ｜ 预算年份 = ' + levelBreakdownState.budgetYear + ' ｜ 月份 = ' + levelBreakdownState.monthStart + ' ~ ' + levelBreakdownState.monthEnd;
+  html += '</div>';
+  // Errors
+  if (levelBreakdownState.errors && levelBreakdownState.errors.length > 0) {
+    html += '<div style="background:#fff1f0;padding:12px;border-radius:4px;margin-bottom:12px;font-size:13px;color:#ff4d4f;border-left:3px solid #ff4d4f">';
+    html += '<strong>⚠️ 以下月份/部门缺少职级结构数据，已跳过：</strong><ul style="margin:4px 0 0 16px">';
+    levelBreakdownState.errors.forEach(function(e) { html += '<li>' + e + '</li>'; });
     html += '</ul></div>';
   }
-  if (breakdown.rows.length === 0) {
-    html += '<div class="empty-state"><p>所选月份范围内没有可计算的数据</p></div>';
-    return html;
-  }
-  html += '<button class="btn btn-primary" onclick="exportLevelBreakdown()" style="margin-bottom:12px">&#128202; 导出 Excel</button>';
-  html += renderLevelBreakdownTable(breakdown.rows);
-  html += '<input type="hidden" id="levelBreakdownCache" value="" data-rows="' + encodeURIComponent(JSON.stringify(breakdown.rows)) + '" />';
+  html += renderLevelBreakdownTable(levelBreakdownState.rows);
+  html += '<input type="hidden" id="levelBreakdownCache" value="" data-rows="' + encodeURIComponent(JSON.stringify(levelBreakdownState.rows)) + '" />';
   return html;
+}
+
+function openLevelBreakdownConfig() {
+  var projects = state.projects.filter(function(p) { return state.currentNav === 'tos' && (!state.filter.primaryDept || state.filter.primaryDept === '全部' || p.primaryDept === state.filter.primaryDept); });
+  if (projects.length === 0) projects = state.projects;
+  var years = Array.from(new Set(state.levelStructures.map(function(r) { return r.budgetYear; }))).sort();
+  if (years.length === 0) { showToast('请先维护职级结构数据', 'error'); return; }
+  if (projects.length === 0) { showToast('请先录入项目数据', 'error'); return; }
+  var html = '<div class="modal" style="width:520px"><div class="modal-header">';
+  html += '<h3>部门月度职级投入测算</h3>';
+  html += '<span class="modal-close" onclick="closeModal(\'levelBreakdownModal\')">&times;</span></div><div class="modal-body">';
+  html += '<div style="background:#e6f7ff;padding:10px;border-radius:4px;font-size:12px;color:#0958d9;margin-bottom:16px">';
+  html += '系统将根据选择的项目、月份范围和预算年份对应的职级结构，自动计算各职级的投入金额。</div>';
+  // Budget Year
+  html += '<div class="level-form-row"><label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px">预算年份<span style="color:#ff4d4f">*</span></label>';
+  html += '<select id="lb-budgetYear" style="width:100%;padding:6px 8px;border:1px solid #d9d9d9;border-radius:4px">';
+  years.forEach(function(y) { html += '<option value="' + y + '">' + y + '</option>'; });
+  html += '</select></div>';
+  // Project
+  html += '<div class="level-form-row"><label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px">项目名称<span style="color:#ff4d4f">*</span></label>';
+  html += '<select id="lb-projectId" style="width:100%;padding:6px 8px;border:1px solid #d9d9d9;border-radius:4px">';
+  projects.forEach(function(p) { html += '<option value="' + p.id + '">' + p.projectName + '  (' + (p.primaryDept || '') + ' / ' + (p.deptCode || '') + ')</option>'; });
+  html += '</select></div>';
+  // Month range
+  html += '<div class="level-form-row"><label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px">月份范围<span style="color:#ff4d4f">*</span></label>';
+  html += '<div style="display:flex;align-items:center;gap:8px">';
+  html += '<input type="month" id="lb-monthStart" style="flex:1;padding:6px 8px;border:1px solid #d9d9d9;border-radius:4px" />';
+  html += '<span style="color:#8c8c8c">至</span>';
+  html += '<input type="month" id="lb-monthEnd" style="flex:1;padding:6px 8px;border:1px solid #d9d9d9;border-radius:4px" />';
+  html += '</div></div>';
+  html += '</div><div class="modal-footer"><button class="btn" onclick="closeModal(\'levelBreakdownModal\')">取消</button>';
+  html += '<button class="btn btn-primary" onclick="startLevelBreakdownCalc()">&#128269; 开始测算</button></div></div>';
+  var m = document.createElement('div');
+  m.id = 'levelBreakdownModal';
+  m.className = 'modal-overlay show';
+  m.innerHTML = html;
+  document.body.appendChild(m);
+  // Default values
+  document.getElementById('lb-budgetYear').value = levelBreakdownState.budgetYear || years[0];
+  document.getElementById('lb-projectId').value = levelBreakdownState.projectId || projects[0].id;
+  document.getElementById('lb-monthStart').value = levelBreakdownState.monthStart || '';
+  document.getElementById('lb-monthEnd').value = levelBreakdownState.monthEnd || '';
+}
+
+function startLevelBreakdownCalc() {
+  var budgetYear = document.getElementById('lb-budgetYear').value;
+  var projectId = document.getElementById('lb-projectId').value;
+  var monthStart = document.getElementById('lb-monthStart').value;
+  var monthEnd = document.getElementById('lb-monthEnd').value;
+  if (!budgetYear || !projectId || !monthStart || !monthEnd) {
+    showToast('请完整填写所有选项', 'error'); return;
+  }
+  if (monthStart > monthEnd) {
+    showToast('起始月份不能晚于结束月份', 'error'); return;
+  }
+  var project = state.projects.find(function(p) { return p.id === projectId; });
+  if (!project) { showToast('未找到项目', 'error'); return; }
+  // Run breakdown
+  var cfg = { budgetYear: budgetYear, monthStart: monthStart, monthEnd: monthEnd };
+  var breakdown = computeLevelBreakdown(project, cfg);
+  // Save state
+  levelBreakdownState.budgetYear = budgetYear;
+  levelBreakdownState.projectId = projectId;
+  levelBreakdownState.monthStart = monthStart;
+  levelBreakdownState.monthEnd = monthEnd;
+  levelBreakdownState.projectName = project.projectName;
+  levelBreakdownState.projectDept = project.primaryDept;
+  levelBreakdownState.rows = breakdown.rows;
+  levelBreakdownState.errors = breakdown.errors;
+  closeModal('levelBreakdownModal');
+  showToast('测算完成：' + breakdown.rows.length + ' 条数据' + (breakdown.errors.length > 0 ? '，' + breakdown.errors.length + ' 条跳过' : ''), breakdown.rows.length > 0 ? 'success' : 'warning');
+  render();
 }
 
 function computeLevelBreakdown(project, cfg) {
