@@ -198,9 +198,6 @@ tr.summary-row .col-sticky{background:#fafafa}
         <div class="nav-item" data-nav="tos" onclick="switchNav('tos')">
           <span class="icon">📊</span> tOS项目
         </div>
-        <div class="nav-item" data-nav="level" onclick="switchNav('level')">
-          <span class="icon">👥</span> tOS职级结构
-        </div>
         <div class="nav-item disabled" data-nav="tech" onclick="switchNav('tech')">
           <span class="icon">🛠</span> 技术项目
         </div>
@@ -342,7 +339,6 @@ function rebuildHeaderMap() {
 const NAV_TITLES = {
   device: '整机产品项目 - 按日分摊测算',
   tos: 'tOS项目 - 按日分摊测算',
-  level: 'tOS职级结构 - 部门月度职级投入测算',
   tech: '技术项目 - 按日分摊测算',
   capability: '能力建设项目 - 按日分摊测算',
 };
@@ -1111,11 +1107,6 @@ function renderNav() {
 function renderMain() {
   const body = document.getElementById('mainBody');
 
-  if (state.currentNav === 'level') {
-    body.innerHTML = renderLevelStructure();
-    return;
-  }
-
   if (state.currentNav !== 'tos' && state.currentNav !== 'device') {
     body.innerHTML = '<div class="coming-soon"><div class="icon">&#128640;</div><h3>' + (NAV_TITLES[state.currentNav] || '') + '</h3><p>该模块正在建设中，敬请期待...</p></div>';
     return;
@@ -1127,8 +1118,14 @@ function renderMain() {
   html += '<div class="tab ' + (state.currentTab === 'monthly' ? 'active' : '') + '" onclick="switchTab(\'monthly\')">&#128197; 项目月度预估数据</div>';
   if (state.currentNav === 'tos') {
     html += '<div class="tab ' + (state.currentTab === 'levelBreakdown' ? 'active' : '') + '" onclick="switchTab(\'levelBreakdown\')">&#128101; 部门月度职级投入</div>';
+    html += '<div class="tab ' + (state.currentTab === 'levelStructure' ? 'active' : '') + '" onclick="switchTab(\'levelStructure\')">&#128100; 职级结构</div>';
   }
   html += '</div>';
+  if (state.currentTab === 'levelStructure') {
+    // Level structure page (no filter bar)
+    body.innerHTML = html + renderLevelStructure();
+    return;
+  }
   html += renderFilterBar();
   html += '<div id="dataArea"></div>';
   body.innerHTML = html;
@@ -2002,7 +1999,7 @@ function closeDetailModal() {
 
 // ===== Navigation =====
 function switchNav(nav) {
-  if (nav !== 'tos' && nav !== 'device' && nav !== 'level') {
+  if (nav !== 'tos' && nav !== 'device') {
     showToast('该模块正在建设中，敬请期待', 'info');
     return;
   }
