@@ -511,6 +511,9 @@ let state = {
   levelFilterDept: '',
 };
 
+// 部门月度职级投入测算结果状态（持久化到 localStorage）
+var levelBreakdownState = { budgetYear: '', projectIds: [], monthStart: '', monthEnd: '', rows: [], errors: [], projectNames: '' };
+
 // ===== Storage =====
 function getStorageKey(suffix) {
   return 'costAlloc_' + state.currentNav + '_' + suffix;
@@ -547,6 +550,41 @@ function saveLevelStructures() {
 
 function saveVersions() {
   localStorage.setItem(getStorageKey('versions'), JSON.stringify(state.versions));
+}
+
+// 测算结果持久化（刷新/重启浏览器后仍保留，仅支持人工手动删除）
+function saveLevelBreakdown() {
+  try {
+    localStorage.setItem('costAlloc_levelBreakdown', JSON.stringify({
+      budgetYear: levelBreakdownState.budgetYear,
+      projectIds: levelBreakdownState.projectIds,
+      monthStart: levelBreakdownState.monthStart,
+      monthEnd: levelBreakdownState.monthEnd,
+      projectNames: levelBreakdownState.projectNames,
+      rows: levelBreakdownState.rows,
+      errors: levelBreakdownState.errors
+    }));
+  } catch (e) {
+    console.warn('测算结果保存失败', e);
+  }
+}
+
+function loadLevelBreakdown() {
+  try {
+    var raw = localStorage.getItem('costAlloc_levelBreakdown');
+    if (!raw) return;
+    var d = JSON.parse(raw);
+    if (!d) return;
+    levelBreakdownState.budgetYear = d.budgetYear || '';
+    levelBreakdownState.projectIds = d.projectIds || [];
+    levelBreakdownState.monthStart = d.monthStart || '';
+    levelBreakdownState.monthEnd = d.monthEnd || '';
+    levelBreakdownState.projectNames = d.projectNames || '';
+    levelBreakdownState.rows = Array.isArray(d.rows) ? d.rows : [];
+    levelBreakdownState.errors = Array.isArray(d.errors) ? d.errors : [];
+  } catch (e) {
+    console.warn('测算结果读取失败', e);
+  }
 }
 
 // ===== Utilities =====
@@ -2184,6 +2222,7 @@ function setupDragDrop() {
 // ===== Init =====
 function init() {
   loadData();
+  loadLevelBreakdown();
   render();
   setupDragDrop();
   // Close dropdowns when clicking outside
@@ -2520,7 +2559,6 @@ function exportLevelData() {
 }
 
 // ===== Level Breakdown Tab (tOS project 3rd tab) =====
-var levelBreakdownState = { budgetYear: '', projectIds: [], monthStart: '', monthEnd: '', rows: [], errors: [], projectNames: '' };
 
 function renderLevelBreakdownTab(filteredProjects) {
   var years = Array.from(new Set(state.levelStructures.map(function(r) { return r.budgetYear; }))).sort();
@@ -2728,6 +2766,7 @@ function startLevelBreakdownCalc() {
   levelBreakdownState.projectNames = selectedNames.join(', ');
   levelBreakdownState.rows = allRows;
   levelBreakdownState.errors = allErrors;
+  saveLevelBreakdown();
   closeModal('levelBreakdownModal');
   showToast('测算完成：' + allRows.length + ' 条数据' + (allErrors.length > 0 ? '，' + allErrors.length + ' 条跳过' : ''), allRows.length > 0 ? 'success' : 'warning');
   render();
@@ -2827,6 +2866,7 @@ function batchDeleteBreakdown() {
   if (!confirm('确定要删除选中的 ' + checks.length + ' 条数据吗？此操作不可撤销。')) return;
   var indices = Array.from(checks).map(function(c) { return Number(c.dataset.idx); }).sort(function(a, b) { return b - a; });
   indices.forEach(function(i) { levelBreakdownState.rows.splice(i, 1); });
+  saveLevelBreakdown();
   showToast('已删除 ' + indices.length + ' 条数据', 'success');
   render();
 }
