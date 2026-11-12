@@ -2596,18 +2596,20 @@ function computeLevelBreakdown(project, cfg) {
   var rows = [];
   var errors = [];
   var lvlRows = state.levelStructures.filter(function(r) { return r.budgetYear === cfg.budgetYear; });
-  mData.forEach(function(m) {
-    if (cfg.monthStart && m.month < cfg.monthStart) return;
-    if (cfg.monthEnd && m.month > cfg.monthEnd) return;
-    var lvl = lvlRows.find(function(r) {
-      return (r.deptCode && r.deptCode === project.deptCode) || r.primaryDept === project.primaryDept;
-    });
+  var lvl = lvlRows.find(function(r) {
+    return (r.deptCode && r.deptCode === project.deptCode) || r.primaryDept === project.primaryDept;
+  });
+  Object.keys(mData).sort().forEach(function(monthKey) {
+    if (cfg.monthStart && monthKey < cfg.monthStart) return;
+    if (cfg.monthEnd && monthKey > cfg.monthEnd) return;
+    var total = mData[monthKey].total || 0;
+    if (total <= 0) return;
     if (!lvl) {
-      errors.push(m.month + '：' + (project.primaryDept || project.deptCode || '未知部门') + ' 无职级结构');
+      errors.push(monthKey + '：' + (project.primaryDept || project.deptCode || '未知部门') + ' 无职级结构');
       return;
     }
-    var row = { month: m.month, projectName: project.projectName, primaryDept: project.primaryDept, deptCode: project.deptCode, totalInput: m.amount };
-    LEVEL_TOTAL_KEYS.forEach(function(k) { row[k] = Number((m.amount * (lvl[k] || 0)).toFixed(2)); });
+    var row = { month: monthKey, projectName: project.projectName, primaryDept: project.primaryDept, deptCode: project.deptCode, totalInput: total };
+    LEVEL_TOTAL_KEYS.forEach(function(k) { row[k] = Number((total * (lvl[k] || 0)).toFixed(2)); });
     rows.push(row);
   });
   return { rows: rows, errors: errors };
