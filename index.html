@@ -978,11 +978,17 @@ function renderDataArea() {
   if (!area) return;
   var filteredProjects = getFilteredProjects();
   var totalEstimate = filteredProjects.reduce(function(s, p) { return s + getTotalEstimate(p); }, 0);
+  var tos17Total = filteredProjects.filter(function(p) { return p.projectName && p.projectName.indexOf('tOS17') !== -1; }).reduce(function(s, p) { return s + getTotalEstimate(p); }, 0);
+  var tos18Total = filteredProjects.filter(function(p) { return p.projectName && p.projectName.indexOf('tOS18') !== -1; }).reduce(function(s, p) { return s + getTotalEstimate(p); }, 0);
   var allMonths = getAllMonths(filteredProjects);
   var monthRange = allMonths.length > 0 ? (allMonths[0] + ' ~ ' + allMonths[allMonths.length - 1]) : '-';
   var html = '';
   html += '<div class="summary-cards">';
   html += '<div class="summary-card"><div class="label">预估投入合计</div><div class="value">' + formatMoney(totalEstimate) + '<span class="unit">人月</span></div></div>';
+  if (state.currentNav !== 'device') {
+    html += '<div class="summary-card" style="border-top:3px solid #722ed1"><div class="label">tOS17.X 总投入</div><div class="value">' + formatMoney(tos17Total) + '<span class="unit">人月</span></div></div>';
+    html += '<div class="summary-card" style="border-top:3px solid #13c2c2"><div class="label">tOS18.X 总投入</div><div class="value">' + formatMoney(tos18Total) + '<span class="unit">人月</span></div></div>';
+  }
   html += '<div class="summary-card"><div class="label">覆盖月份</div><div class="value">' + allMonths.length + '<span class="unit">个月</span></div></div>';
   html += '<div class="summary-card"><div class="label">时间范围</div><div class="value" style="font-size:14px">' + monthRange + '</div></div>';
   html += '<div class="summary-card"><div class="label">历史版本</div><div class="value">' + state.versions.length + '<span class="unit">个</span></div></div>';
