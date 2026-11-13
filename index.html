@@ -437,7 +437,11 @@ function getFilterConfig() {
   return {key: 'primaryDept', label: '一级部门', field: 'primaryDept', icon: '\uD83C\uDFE2'};
 }
 function getExtraFilterConfigs() {
-  if (state.currentNav === 'device') return [{key: 'secondaryDept', label: '二级部门', field: 'secondaryDept', icon: '\uD83C\uDFE2'}];
+  if (state.currentNav === 'device') return [
+    {key: 'projectCode', label: '项目编码', field: 'projectCode', icon: '\uD83D\uDD11'},
+    {key: 'projectName', label: '项目名称', field: 'projectName', icon: '\uD83D\uDCCB'},
+    {key: 'secondaryDept', label: '二级部门', field: 'secondaryDept', icon: '\uD83C\uDFE2'}
+  ];
   return [
     {key: 'secondaryDept', label: '二级部门', field: 'secondaryDept', icon: '\uD83C\uDFE2', parentKey: 'primaryDept'},
     {key: 'projectName', label: '项目名称', field: 'projectName', icon: '\uD83D\uDCCB'}
@@ -506,7 +510,7 @@ let state = {
   versions: [],
   levelStructures: [],
   editingProjectId: null,
-  filters: { brand: [], secondaryDept: [], version: [], month: [] },
+  filters: { brand: [], primaryDept: [], secondaryDept: [], projectName: [], projectCode: [], version: [], month: [] },
   selectedIds: [],
   levelFilterYear: '',
   levelFilterDept: '',
@@ -743,6 +747,48 @@ function getTotalEstimate(project) {
   return getStages().reduce(function(sum, s) {
     return sum + (parseFloat(project[s.estimateField]) || 0);
   }, 0);
+}
+
+// 累至今日预估投入：按阶段工期将阶段预估投入拆分到每天，
+// 自项目第一个节点日期（第一阶段开始）起累计至今天为止的金额合计
+function calculateCumulativeToDate(project) {
+  var today = parseDate(formatDateStr(new Date()));
+  var total = 0;
+  getStages().forEach(function(stage) {
+    var estimate = parseFloat(project[stage.estimateField]) || 0;
+    var start = parseDate(project[stage.startField]);
+    var end = parseDate(project[stage.endField]);
+    // Special case: STR5+6个月 — end date = str5Date + 180 days (same as monthly split)
+    if (stage.key === 'str5Plus6m') {
+      var str5 = parseDate(project.str5Date);
+      if (str5) {
+        var computed = new Date(str5);
+        computed.setDate(computed.getDate() + 179);
+        end = formatDateStr(computed);
+      }
+    }
+    if (!estimate || !start || !end) return;
+    end = parseDate(end);
+    if (!end || start > end) return;
+    var totalStageDays = Math.floor((end - start) / 86400000) + 1;
+    if (totalStageDays <= 0) return;
+    var effEnd = end < today ? end : today;
+    if (effEnd < start) return; // stage starts in the future
+    var elapsedDays = Math.floor((effEnd - start) / 86400000) + 1;
+    total += estimate / totalStageDays * elapsedDays;
+  });
+  return total;
+}
+
+// 每年预估投入（全生命周期口径，按月度拆分结果按年汇总）
+function getProjectYearTotals(project) {
+  var mData = calculateMonthlyData(project);
+  var byYear = {};
+  Object.keys(mData).forEach(function(k) {
+    var y = k.split('-')[0];
+    byYear[y] = (byYear[y] || 0) + mData[k].total;
+  });
+  return byYear;
 }
 
 // ===== Filters (multi-select) =====
@@ -1057,6 +1103,63 @@ function syncFilterCheckboxes() {
   });
 }
 
+// ===== 项目累计投入 Tab =====
+function renderCumulativeTable(projects) {
+  if (!projects || projects.length === 0) {
+    return '<div class="empty-state"><div class="icon">&#128466;</div><p>暂无项目数据，请在「项目预估数据总览」中录入或导入</p></div>';
+  }
+  // Union of years across filtered projects (ascending)
+  var yearsSet = new Set();
+  projects.forEach(function(p) {
+    var byYear = getProjectYearTotals(p);
+    Object.keys(byYear).forEach(function(y) { yearsSet.add(y); });
+  });
+  var years = Array.from(yearsSet).sort();
+  var html = '<div class="table-wrapper"><table><thead><tr>';
+  html += '<th class="col-sticky" style="min-width:160px">项目名称</th>';
+  html += '<th style="min-width:100px">一级部门</th>';
+  html += '<th style="min-width:110px">二级部门</th>';
+  html += '<th class="text-right" style="min-width:130px">全生命周期投入</th>';
+  html += '<th class="text-right" style="min-width:140px">累至今日预估投入</th>';
+  years.forEach(function(y) {
+    html += '<th class="text-right" style="min-width:110px">' + y + '年预估投入</th>';
+  });
+  html += '</tr></thead><tbody>';
+  var sumLife = 0, sumCum = 0;
+  var yearSums = {};
+  var todayStr = formatDateStr(new Date());
+  projects.forEach(function(p) {
+    var byYear = getProjectYearTotals(p);
+    var life = getTotalEstimate(p);
+    var cum = calculateCumulativeToDate(p);
+    sumLife += life;
+    sumCum += cum;
+    html += '<tr>';
+    html += '<td class="col-sticky">' + (p.projectName || '') + '</td>';
+    html += '<td>' + (p.primaryDept || '') + '</td>';
+    html += '<td>' + (p.secondaryDept || '') + '</td>';
+    html += '<td class="text-right">' + formatMoney(life) + '</td>';
+    html += '<td class="text-right">' + formatMoney(cum) + '</td>';
+    years.forEach(function(y) {
+      var v = byYear[y] || 0;
+      yearSums[y] = (yearSums[y] || 0) + v;
+      html += '<td class="text-right">' + formatMoney(v) + '</td>';
+    });
+    html += '</tr>';
+  });
+  html += '<tr class="summary-row">';
+  html += '<td class="col-sticky">合计</td>';
+  html += '<td></td><td></td>';
+  html += '<td class="text-right">' + formatMoney(sumLife) + '</td>';
+  html += '<td class="text-right">' + formatMoney(sumCum) + '</td>';
+  years.forEach(function(y) {
+    html += '<td class="text-right">' + formatMoney(yearSums[y] || 0) + '</td>';
+  });
+  html += '</tr></tbody></table></div>';
+  html += '<p style="font-size:12px;color:#8c8c8c;margin-top:8px">说明：全生命周期投入 = 「项目预估数据总览」的预估投入合计；累至今日预估投入 = 自项目第一个节点日期起，按各阶段工期将阶段预估投入拆分到每天后，累计至 ' + todayStr + ' 的金额；每年预估投入为该项目在该自然年的完整投入（不截至今日）。</p>';
+  return html;
+}
+
 function renderDataArea() {
   var area = document.getElementById('dataArea');
   if (!area) return;
@@ -1094,13 +1197,15 @@ function renderDataArea() {
     }
   }
   html += '<div class="toolbar">';
-  html += '<button class="btn btn-primary" onclick="openEntryModal()">&#10133; 手动录入</button>';
-  html += '<button class="btn" onclick="openImportModal()">&#11015; 导入数据</button>';
-  html += '<button class="btn" onclick="exportData()">&#11015; 导出当前数据</button>';
-  if (state.currentTab === 'monthly') {
-    html += '<button class="btn" onclick="exportMonthlyData()">&#128202; 导出月度拆分数据</button>';
+  if (state.currentTab !== 'cumulative') {
+    html += '<button class="btn btn-primary" onclick="openEntryModal()">&#10133; 手动录入</button>';
+    html += '<button class="btn" onclick="openImportModal()">&#11015; 导入数据</button>';
+    html += '<button class="btn" onclick="exportData()">&#11015; 导出当前数据</button>';
+    if (state.currentTab === 'monthly') {
+      html += '<button class="btn" onclick="exportMonthlyData()">&#128202; 导出月度拆分数据</button>';
+    }
+    html += '<button class="btn" onclick="downloadTemplate()">&#11015; 下载模板</button>';
   }
-  html += '<button class="btn" onclick="downloadTemplate()">&#11015; 下载模板</button>';
   html += '<div class="spacer"></div>';
   html += '<button class="btn" onclick="openVersionModal()">&#128336; 历史版本(' + state.versions.length + ')</button>';
   html += '</div>';
@@ -1118,6 +1223,8 @@ function renderDataArea() {
     html += renderOverviewTable(filteredProjects);
   } else if (state.currentTab === 'levelBreakdown') {
     html += renderLevelBreakdownTab(filteredProjects);
+  } else if (state.currentTab === 'cumulative') {
+    html += renderCumulativeTable(filteredProjects);
   } else {
     html += renderMonthlyTable(filteredProjects);
     // Department breakdown table (device only, when secondaryDept data exists)
@@ -1158,6 +1265,9 @@ function renderMain() {
   html += '<div class="tabs">';
   html += '<div class="tab ' + (state.currentTab === 'overview' ? 'active' : '') + '" onclick="switchTab(\'overview\')">&#128203; 项目预估数据总览</div>';
   html += '<div class="tab ' + (state.currentTab === 'monthly' ? 'active' : '') + '" onclick="switchTab(\'monthly\')">&#128197; 项目月度预估数据</div>';
+  if (state.currentNav === 'device') {
+    html += '<div class="tab ' + (state.currentTab === 'cumulative' ? 'active' : '') + '" onclick="switchTab(\'cumulative\')">&#128200; 项目累计投入</div>';
+  }
   if (state.currentNav === 'tos') {
     html += '<div class="tab ' + (state.currentTab === 'levelBreakdown' ? 'active' : '') + '" onclick="switchTab(\'levelBreakdown\')">&#128101; 部门月度职级投入</div>';
     html += '<div class="tab ' + (state.currentTab === 'levelStructure' ? 'active' : '') + '" onclick="switchTab(\'levelStructure\')">&#128100; 职级结构</div>';
